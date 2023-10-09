@@ -25,6 +25,7 @@ from transformers import (  # noqa: F401
 from axolotl.prompt_tokenizers import LLAMA_DEFAULT_EOS_TOKEN
 from axolotl.utils.bench import log_gpu_memory_usage
 from axolotl.utils.dict import DictDefault
+from axolotl.monkeypatch.medusa_utils import replace_compute_loss, add_medusa_heads
 
 LOG = logging.getLogger("axolotl")
 
@@ -438,6 +439,19 @@ def load_model(
 
     if cfg.adapter is not None:
         log_gpu_memory_usage(LOG, "after adapters", model.device)
+
+    if cfg.medusa_num_heads is not None:
+        LOG.info(f"using Medusa with {cfg.medusa_num_heads} heads, {cfg.medusa_num_layers} layers, {cfg.medusa_decay_coefficient} decay coefficient")
+        add_medusa_heads(
+            model,
+            medusa_num_heads=cfg.medusa_num_heads,
+            medusa_num_layers=cfg.medusa_num_layers,
+        )
+        replace_compute_loss(
+            medusa_heads_coefficient=cfg.medusa_heads_coefficient,
+            medusa_decay_coefficient=cfg.medusa_decay_coefficient,
+            medusa_logging=cfg.medusa_logging,
+        )
 
     # TODO resume_from_checkpoint handling
     return model, lora_config

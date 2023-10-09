@@ -119,6 +119,12 @@ def normalize_config(cfg):
         or (cfg.model_type and "mistral" in cfg.model_type.lower())
     )
 
+    if cfg.medusa_num_heads is not None:
+        cfg.medusa_num_layers = cfg.medusa_num_layers if cfg.medusa_num_layers is not None else 0
+        cfg.medusa_heads_coefficient = cfg.medusa_heads_coefficient if cfg.medusa_heads_coefficient is not None else 0.1
+        cfg.medusa_decay_coefficient = cfg.medusa_decay_coefficient if cfg.medusa_decay_coefficient is not None else 1.0
+        cfg.medusa_logging = cfg.medusa_logging if cfg.medusa_logging is not None else False
+
     log_gpu_memory_usage(LOG, "baseline", cfg.device)
 
 
