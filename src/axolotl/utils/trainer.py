@@ -663,6 +663,12 @@ def setup_trainer(cfg, train_dataset, eval_dataset, model, tokenizer, total_num_
         training_arguments_kwargs["ddp_bucket_cap_mb"] = cfg.ddp_bucket_cap_mb
     if cfg.ddp_broadcast_buffers is not None:
         training_arguments_kwargs["ddp_broadcast_buffers"] = cfg.ddp_broadcast_buffers
+    if cfg.ddp_find_unused_parameters is not None:
+        training_arguments_kwargs[
+            "ddp_find_unused_parameters"
+        ] = cfg.ddp_find_unused_parameters
+    else:
+        training_arguments_kwargs["ddp_find_unused_parameters"] = False
 
     training_args = AxolotlTrainingArguments(  # pylint: disable=unexpected-keyword-arg
         max_steps=total_num_steps if cfg.max_steps else -1,
@@ -683,7 +689,7 @@ def setup_trainer(cfg, train_dataset, eval_dataset, model, tokenizer, total_num_
             and cfg.save_steps % cfg.eval_steps == 0
         )
         or False,
-        ddp_find_unused_parameters=False if cfg.ddp else None,
+        # ddp_find_unused_parameters=False if cfg.ddp else None,
         group_by_length=cfg.group_by_length,
         report_to="wandb" if cfg.use_wandb else None,
         run_name=cfg.wandb_run_id if cfg.use_wandb else None,

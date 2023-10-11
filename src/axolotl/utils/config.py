@@ -124,6 +124,11 @@ def normalize_config(cfg):
         cfg.medusa_heads_coefficient = cfg.medusa_heads_coefficient if cfg.medusa_heads_coefficient is not None else 0.1
         cfg.medusa_decay_coefficient = cfg.medusa_decay_coefficient if cfg.medusa_decay_coefficient is not None else 1.0
         cfg.medusa_logging = cfg.medusa_logging if cfg.medusa_logging is not None else False
+        cfg.medusa_scheduler = cfg.medusa_scheduler if cfg.medusa_scheduler is not None else "sine"
+        cfg.medusa_only_heads = cfg.medusa_only_heads if cfg.medusa_only_heads is not None else False
+        cfg.medusa_num_unfreeze_layers = cfg.medusa_num_unfreeze_layers if cfg.medusa_num_unfreeze_layers is not None else 0
+        if cfg.medusa_num_unfreeze_layers > 0:
+            assert cfg.gradient_checkpointing is not True, "gradient_checkpointing is not supported with medusa_num_unfreeze_layers > 0"
 
     log_gpu_memory_usage(LOG, "baseline", cfg.device)
 

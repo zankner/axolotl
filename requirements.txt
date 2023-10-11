@@ -1,33 +1,30 @@
---extra-index-url https://download.pytorch.org/whl/cu118
---extra-index-url https://huggingface.github.io/autogptq-index/whl/cu118/
-torch==2.0.1
+torch
 auto-gptq
 packaging
-peft @ git+https://github.com/huggingface/peft.git
-transformers @ git+https://github.com/huggingface/transformers.git@bd6205919aad4d3a2300a39a98a642f1cc3a5348
-bitsandbytes>=0.41.1
-accelerate @ git+https://github.com/huggingface/accelerate@80da9cfb09bb3cc9f1b385cb55d6b90d025a5fd9
+peft
+transformers
+bitsandbytes
+accelerate
 deepspeed
 addict
 fire
-PyYAML>=6.0
+PyYAML
 datasets
-flash-attn>=2.3.0
+flash-attn
 sentencepiece
 wandb
 einops
-xformers
 optimum
 hf_transfer
 colorama
 numba
-numpy>=1.24.4
+numpy
 # qlora things
-bert-score==0.3.13
-evaluate==0.4.0
-rouge-score==0.1.2
+bert-score
+evaluate
+rouge-score
 scipy
-scikit-learn==1.2.2
+scikit-learn
 pynvml
 art
-fschat==0.2.29
+fschat

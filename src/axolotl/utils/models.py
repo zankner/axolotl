@@ -441,16 +441,43 @@ def load_model(
         log_gpu_memory_usage(LOG, "after adapters", model.device)
 
     if cfg.medusa_num_heads is not None:
-        LOG.info(f"using Medusa with {cfg.medusa_num_heads} heads, {cfg.medusa_num_layers} layers, {cfg.medusa_decay_coefficient} decay coefficient")
+        from transformers import LlamaForCausalLM, MistralForCausalLM
+
+        assert isinstance(
+            model, (LlamaForCausalLM, MistralForCausalLM)
+        ), "Medusa is only supported for Llama and Mistral models for now"
+
+        LOG.info(f"using Medusa with {cfg.medusa_num_heads} heads, {cfg.medusa_num_layers} layers, {cfg.medusa_decay_coefficient} decay coefficient, {cfg.medusa_heads_coefficient} heads coefficient, {cfg.medusa_scheduler} scheduler, {cfg.medusa_logging} logging")
+
         add_medusa_heads(
             model,
             medusa_num_heads=cfg.medusa_num_heads,
             medusa_num_layers=cfg.medusa_num_layers,
         )
+
+        if cfg.medusa_only_heads:
+            LOG.info("Only training heads!!")
+            for param in model.parameters():
+                param.requires_grad = False
+            # Leave the last medusa_num_unfreeze_layers layers trainable
+            if cfg.medusa_num_unfreeze_layers > 0:
+                for layer in model.model.layers[-cfg.medusa_num_unfreeze_layers:]:
+                    LOG.info(f"Unfreezing layer {layer}")
+                    for param in layer.parameters():
+                        param.requires_grad = True
+                # Leave the last medusa_num_unfreeze_layers layers trainable to ensure the gradient can pass through
+                for param in model.model.norm.parameters():
+                    param.requires_grad = True
+            
+            for param in model.medusa_head.parameters():
+                param.requires_grad = True
+
         replace_compute_loss(
             medusa_heads_coefficient=cfg.medusa_heads_coefficient,
             medusa_decay_coefficient=cfg.medusa_decay_coefficient,
+            medusa_scheduler=cfg.medusa_scheduler,
             medusa_logging=cfg.medusa_logging,
+            medusa_only_heads=cfg.medusa_only_heads,
         )
 
     # TODO resume_from_checkpoint handling

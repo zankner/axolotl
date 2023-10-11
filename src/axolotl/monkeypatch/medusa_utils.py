@@ -17,6 +17,7 @@ import axolotl
 from transformers.trainer_pt_utils import LabelSmoother
 IGNORE_TOKEN_ID = LabelSmoother.ignore_index
 import types
+import math
 
 LOG = logging.getLogger("axolotl.monkeypatch.medusa")
 
@@ -164,7 +165,9 @@ def add_medusa_heads(
 def replace_compute_loss(
     medusa_heads_coefficient,
     medusa_decay_coefficient, 
-    medusa_logging=False
+    medusa_scheduler="constant",
+    medusa_logging=False,
+    medusa_only_heads=False,
 ):
     def compute_loss(self, model, inputs, return_outputs=False):
         """
@@ -196,8 +199,28 @@ def replace_compute_loss(
             medusa_labels = medusa_labels.view(-1)
             medusa_labels = medusa_labels.to(medusa_logits.device)
             loss_i = loss_fct(medusa_logits, medusa_labels)
+            # Compute the coefficient for medusa losses
+            if medusa_scheduler == "sine":
+                medusa_scheduler_coefficient = math.sin(
+                    self.state.global_step / self.state.max_steps * math.pi / 2
+                )
+            elif medusa_scheduler == "linear":
+                medusa_scheduler_coefficient = (
+                    self.state.global_step / self.state.max_steps
+                )
+            elif medusa_scheduler == "constant":
+                medusa_scheduler_coefficient = 1
+            else:
+                raise ValueError(
+                    f"Invalid medusa_scheduler: {medusa_scheduler}. "
+                    "Must be one of 'sine', 'linear', or 'constant'."
+                )
             # Add decay coefficient to the loss
-            loss += loss_i * (medusa_decay_coefficient ** i) * (1 if i == 0 else medusa_heads_coefficient)
+            if i == 0:
+                if not medusa_only_heads:
+                    loss += loss_i
+            else:
+                loss += loss_i * medusa_decay_coefficient ** i * medusa_heads_coefficient * medusa_scheduler_coefficient
             not_ignore = medusa_labels.ne(IGNORE_TOKEN_ID)
             medusa_labels = medusa_labels[not_ignore]
 
@@ -209,6 +232,7 @@ def replace_compute_loss(
                 log[f"medusa{i}_top{k}"] = correct.float().mean().item()
 
             log[f"medusa{i}_loss"] = loss_i.item()
+            log["medusa_scheduler_coefficient"] = medusa_scheduler_coefficient
         if medusa_logging and self.state.global_step % self.args.logging_steps == 0:
             self.log(log)
         return (loss, logits) if return_outputs else loss
