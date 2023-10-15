@@ -25,7 +25,7 @@ from transformers import (  # noqa: F401
 from axolotl.prompt_tokenizers import LLAMA_DEFAULT_EOS_TOKEN
 from axolotl.utils.bench import log_gpu_memory_usage
 from axolotl.utils.dict import DictDefault
-from axolotl.monkeypatch.medusa_utils import replace_compute_loss, add_medusa_heads
+from axolotl.monkeypatch.medusa_utils import replace_compute_loss, add_medusa_heads, replace_create_optimizer
 
 LOG = logging.getLogger("axolotl")
 
@@ -410,36 +410,7 @@ def load_model(
                 if hasattr(module, "weight"):
                     module.to(cfg.torch_dtype)
 
-    model, lora_config = load_adapter(model, cfg, cfg.adapter)
-
-    if cfg.ddp and not load_in_8bit:
-        model.to(f"cuda:{cfg.local_rank}")
-
-    if (
-        torch.cuda.device_count() > 1
-        and int(os.getenv("WORLD_SIZE", "1")) > 1
-        and (cfg.load_in_4bit)
-    ):
-        # llama is PROBABLY model parallelizable, but the default isn't that it is
-        # so let's only set it for the 4bit, see
-        # https://github.com/johnsmith0031/alpaca_lora_4bit/blob/08b3fca4a4a9e0d3945be1bab4529f100a428636/finetune.py#L130-L133
-        setattr(model, "is_parallelizable", True)
-        setattr(model, "model_parallel", True)
-
-    requires_grad = []
-    for name, param in model.named_parameters(recurse=True):
-        if param.requires_grad:
-            requires_grad.append(f"{name}: {param.requires_grad}")
-    if len(requires_grad) == 0:
-        LOG.warning("there are no parameters that require gradient updates")
-    model.config.use_cache = False
-
-    if cfg.flash_optimum:
-        model = BetterTransformer.transform(model)
-
-    if cfg.adapter is not None:
-        log_gpu_memory_usage(LOG, "after adapters", model.device)
-
+    # Add support for Medusa (https://github.com/FasterDecoding/Medusa)
     if cfg.medusa_num_heads is not None:
         from transformers import LlamaForCausalLM, MistralForCausalLM
 
@@ -479,6 +450,53 @@ def load_model(
             medusa_logging=cfg.medusa_logging,
             medusa_only_heads=cfg.medusa_only_heads,
         )
+
+        if cfg.medusa_lr_multiplier != 1:
+            LOG.info(f"Using Medusa LR multiplier {cfg.medusa_lr_multiplier}")
+            replace_create_optimizer(
+                medusa_lr_multiplier=cfg.medusa_lr_multiplier,
+            )
+        
+        if cfg.adapter in ["lora", "qlora"]:
+            # Add medusa heads to cfg.lora_modules_to_save
+            if cfg.lora_modules_to_save is None:
+                cfg.lora_modules_to_save = []
+            for i in range(cfg.medusa_num_heads):
+                cfg.lora_modules_to_save.append(f"medusa_head.{i}")
+            # for name, module in model.medusa_head.named_modules():
+            #     if isinstance(module, torch.nn.Linear):
+            #         cfg.lora_modules_to_save.append(f"medusa_head.{name}")
+            # cfg.lora_modules_to_save.append("lm_head")
+
+    model, lora_config = load_adapter(model, cfg, cfg.adapter)
+
+    if cfg.ddp and not load_in_8bit:
+        model.to(f"cuda:{cfg.local_rank}")
+
+    if (
+        torch.cuda.device_count() > 1
+        and int(os.getenv("WORLD_SIZE", "1")) > 1
+        and (cfg.load_in_4bit)
+    ):
+        # llama is PROBABLY model parallelizable, but the default isn't that it is
+        # so let's only set it for the 4bit, see
+        # https://github.com/johnsmith0031/alpaca_lora_4bit/blob/08b3fca4a4a9e0d3945be1bab4529f100a428636/finetune.py#L130-L133
+        setattr(model, "is_parallelizable", True)
+        setattr(model, "model_parallel", True)
+
+    requires_grad = []
+    for name, param in model.named_parameters(recurse=True):
+        if param.requires_grad:
+            requires_grad.append(f"{name}: {param.requires_grad}")
+    if len(requires_grad) == 0:
+        LOG.warning("there are no parameters that require gradient updates")
+    model.config.use_cache = False
+
+    if cfg.flash_optimum:
+        model = BetterTransformer.transform(model)
+
+    if cfg.adapter is not None:
+        log_gpu_memory_usage(LOG, "after adapters", model.device)
 
     # TODO resume_from_checkpoint handling
     return model, lora_config

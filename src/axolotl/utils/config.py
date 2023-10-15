@@ -129,6 +129,7 @@ def normalize_config(cfg):
         cfg.medusa_num_unfreeze_layers = cfg.medusa_num_unfreeze_layers if cfg.medusa_num_unfreeze_layers is not None else 0
         if cfg.medusa_num_unfreeze_layers > 0:
             assert cfg.gradient_checkpointing is not True, "gradient_checkpointing is not supported with medusa_num_unfreeze_layers > 0"
+        cfg.medusa_lr_multiplier = cfg.medusa_lr_multiplier if cfg.medusa_lr_multiplier is not None else 1.0
 
     log_gpu_memory_usage(LOG, "baseline", cfg.device)
 
@@ -187,8 +188,8 @@ def validate_config(cfg):
             if cfg.gptq:
                 raise ValueError("Can't merge qlora if gptq")
 
-            if cfg.load_in_4bit:
-                raise ValueError("Can't merge qlora if loaded in 4bit")
+            # if cfg.load_in_4bit:
+            #     raise ValueError("Can't merge qlora if loaded in 4bit")
 
         else:
             if cfg.load_in_8bit:

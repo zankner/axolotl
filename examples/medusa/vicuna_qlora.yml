@@ -1,36 +1,61 @@
-base_model: codellama/CodeLlama-7b-hf
-base_model_config: codellama/CodeLlama-7b-hf
+base_model: lmsys/vicuna-7b-v1.5
+base_model_config: lmsys/vicuna-7b-v1.5
 model_type: LlamaForCausalLM
 tokenizer_type: LlamaTokenizer
 is_llama_derived_model: true
 
 load_in_8bit: false
-load_in_4bit: false
+load_in_4bit: true
 strict: false
 
 datasets:
-  - path: codefuse_instruction_66k/Evol-Instruction-66k.json
-    type: alpaca
+  - path: ShareGPT_Vicuna_unfiltered/ShareGPT_V4.3_unfiltered_cleaned_split.json
+    type: sharegpt
+
+# bench_dataset:
+#   - mmlu
+# do_bench_eval: true
+# max_bench_samples: 1024
+
 dataset_prepared_path:
 val_set_size: 0.01
-output_dir: ./llama_coder_lr_5e-5_medusa_5_1_0.2_0.8_constant_20.0
+output_dir: ./vicuna_qlora_v3_lr_1e-4_medusa_5_1_0.2_0.7_constant_10.0_epoch_2
+
+adapter: qlora
+lora_model_dir:
+
+lora_r: 32
+lora_alpha: 16
+lora_dropout: 0.05
+lora_target_modules: 
+  - gate_proj
+  - down_proj
+  - up_proj
+  - q_proj
+  - v_proj
+  - k_proj
+  - o_proj
+  - lm_head
+lora_target_linear: 
+lora_fan_in_fan_out:
+lora_modules_to_save:
 
 sequence_len: 4096
 sample_packing: true
 pad_to_sequence_len: true
 
-wandb_project: llama_coder_v1
+wandb_project: medusa_vicuna_1.5_v1
 wandb_entity:
 wandb_watch:
 wandb_run_id:
 wandb_log_model:
 
-gradient_accumulation_steps: 16
-micro_batch_size: 1
-num_epochs: 3
+gradient_accumulation_steps: 2
+micro_batch_size: 4
+num_epochs: 2
 optimizer: adamw_bnb_8bit
 lr_scheduler: cosine
-learning_rate: 0.00005
+learning_rate: 0.0001
 
 train_on_inputs: false
 group_by_length: false
@@ -46,8 +71,8 @@ logging_steps: 1
 xformers_attention:
 flash_attention: true
 
-warmup_steps: 20
-eval_steps: 20
+warmup_steps: 80
+eval_steps: 40
 save_steps:
 save_total_limit: 1
 debug:
@@ -63,7 +88,7 @@ special_tokens:
 medusa_num_heads: 5
 medusa_num_layers: 1
 medusa_heads_coefficient: 0.2
-medusa_decay_coefficient: 0.8
+medusa_decay_coefficient: 0.7
 medusa_logging: true
 medusa_scheduler: constant
-medusa_lr_multiplier: 20.0
+medusa_lr_multiplier: 10.0

@@ -18,8 +18,9 @@ from transformers.trainer_pt_utils import LabelSmoother
 IGNORE_TOKEN_ID = LabelSmoother.ignore_index
 import types
 import math
+import wandb
 
-LOG = logging.getLogger("axolotl.monkeypatch.medusa")
+logger = LOG = logging.getLogger("axolotl.monkeypatch.medusa")
 
 class MedusaConfig(PretrainedConfig):
     """
@@ -130,6 +131,7 @@ def add_medusa_heads(
             torch.Tensor: A tensor containing predictions from all Medusa heads.
             (Optional) Original predictions from the base model's LM head.
         """
+        # LOG.debug("medusa_return: %s", medusa_return)
         if not medusa_return:
             return self.old_forward(
                 input_ids=input_ids,
@@ -225,7 +227,7 @@ def replace_compute_loss(
             medusa_labels = medusa_labels[not_ignore]
 
             # Add top-k accuracy
-            for k in range(1, 11):
+            for k in range(1, 10):
                 _, topk = medusa_logits.topk(k, dim=-1)
                 topk = topk[not_ignore]
                 correct = topk.eq(medusa_labels.unsqueeze(-1)).any(-1)
@@ -233,7 +235,88 @@ def replace_compute_loss(
 
             log[f"medusa{i}_loss"] = loss_i.item()
             log["medusa_scheduler_coefficient"] = medusa_scheduler_coefficient
-        if medusa_logging and self.state.global_step % self.args.logging_steps == 0:
-            self.log(log)
+        # self.log(log)
+        # Add prefix to the log
+        if model.training:
+            prefix = "train"
+        else:
+            prefix = "eval"
+        log = {f"{prefix}/{k}": v for k, v in log.items()}
+        if medusa_logging and self.state.is_world_process_zero:
+            # Hardcoded for now
+            wandb.log({
+                **log,
+                "train/global_step": self.state.global_step,
+            })
         return (loss, logits) if return_outputs else loss
     axolotl.utils.trainer.Trainer.compute_loss = compute_loss
+
+def replace_create_optimizer(
+    medusa_lr_multiplier,
+):
+    # Copy from transformers.Trainer.create_optimizer
+    from transformers.trainer import is_sagemaker_mp_enabled, Trainer, ShardedDDPOption
+    def create_optimizer(self):
+        """
+        Setup the optimizer.
+
+        We provide a reasonable default that works well. If you want to use something else, you can pass a tuple in the
+        Trainer's init through `optimizers`, or subclass and override this method in a subclass.
+        """
+        opt_model = self.model_wrapped if is_sagemaker_mp_enabled() else self.model
+
+        if self.optimizer is None:
+            decay_parameters = self.get_decay_parameter_names(opt_model)
+            # Separately set lr for medusa_head
+            optimizer_grouped_parameters = [
+                {
+                    "params": [
+                        p for n, p in opt_model.named_parameters() if (n in decay_parameters and p.requires_grad and "medusa_head" not in n)
+                    ],
+                    "weight_decay": self.args.weight_decay,
+                },
+                {
+                    "params": [
+                        p for n, p in opt_model.named_parameters() if (n in decay_parameters and p.requires_grad and "medusa_head" in n)
+                    ],
+                    "weight_decay": self.args.weight_decay,
+                    "lr": self.args.learning_rate * medusa_lr_multiplier,
+                },
+                
+                {
+                    "params": [
+                        p for n, p in opt_model.named_parameters() if (n not in decay_parameters and p.requires_grad)
+                    ],
+                    "weight_decay": 0.0,
+                },
+            ]
+
+            optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
+
+            if self.sharded_ddp == ShardedDDPOption.SIMPLE:
+                self.optimizer = OSS(
+                    params=optimizer_grouped_parameters,
+                    optim=optimizer_cls,
+                    **optimizer_kwargs,
+                )
+            else:
+                self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
+                if optimizer_cls.__name__ == "Adam8bit":
+                    import bitsandbytes
+
+                    manager = bitsandbytes.optim.GlobalOptimManager.get_instance()
+
+                    skipped = 0
+                    for module in opt_model.modules():
+                        if isinstance(module, nn.Embedding):
+                            skipped += sum({p.data_ptr(): p.numel() for p in module.parameters()}.values())
+                            logger.info(f"skipped {module}: {skipped/2**20}M params")
+                            manager.register_module_override(module, "weight", {"optim_bits": 32})
+                            logger.debug(f"bitsandbytes: will optimize {module} in fp32")
+                    logger.info(f"skipped: {skipped/2**20}M params")
+
+        if is_sagemaker_mp_enabled():
+            self.optimizer = smp.DistributedOptimizer(self.optimizer)
+
+        return self.optimizer
+    axolotl.utils.trainer.Trainer.create_optimizer = create_optimizer
