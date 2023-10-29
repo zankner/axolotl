@@ -353,6 +353,46 @@ def load_model(
             **model_kwargs,
         )
 
+    # Dequantize for qlora
+    # Adapt from https://gist.github.com/ChrisHayduk/1a53463331f52dca205e55982baf9930
+    if cfg.merge_lora and cfg.adapter == "qlora" and cfg.load_in_4bit:
+        import copy
+        import bitsandbytes as bnb
+        from bitsandbytes.functional import dequantize_4bit
+        from peft.utils import _get_submodules
+        import gc
+
+        LOG.info("dequantizing qlora model")
+        dtype = torch.float16
+        device = model.device
+        with torch.no_grad():
+            for name, module in model.named_modules():
+                if isinstance(module, bnb.nn.Linear4bit):
+                    # LOG.info(f"Dequantizing `{name}`...")
+                    quant_state = copy.deepcopy(module.weight.quant_state)
+
+                    quant_state[2] = dtype
+
+                    weights = dequantize_4bit(module.weight.data, quant_state=quant_state, quant_type="nf4").to(dtype)
+
+                    new_module = torch.nn.Linear(module.in_features, module.out_features, bias=None, dtype=dtype)
+                    new_module.weight = torch.nn.Parameter(weights)
+                    new_module.to(device=device, dtype=dtype)
+
+                    parent, target, target_name = _get_submodules(model, name)
+                    setattr(parent, target_name, new_module)
+                    del module
+            
+            gc.collect()
+            torch.cuda.empty_cache()
+
+            model.is_loaded_in_4bit = False
+            model.quantization_method = None
+            model.is_quantized = False
+            delattr(model.config, "quantization_config")
+            # If your model is too large, you may need to call `model.cpu()` to merge on CPU
+            model.to("cpu")
+
     embeddings_len = (
         math.ceil(len(tokenizer) / 32) * 32
         if cfg.resize_token_embeddings_to_32x
@@ -426,23 +466,6 @@ def load_model(
             medusa_num_layers=cfg.medusa_num_layers,
         )
 
-        if cfg.medusa_only_heads:
-            LOG.info("Only training heads!!")
-            for param in model.parameters():
-                param.requires_grad = False
-            # Leave the last medusa_num_unfreeze_layers layers trainable
-            if cfg.medusa_num_unfreeze_layers > 0:
-                for layer in model.model.layers[-cfg.medusa_num_unfreeze_layers:]:
-                    LOG.info(f"Unfreezing layer {layer}")
-                    for param in layer.parameters():
-                        param.requires_grad = True
-                # Leave the last medusa_num_unfreeze_layers layers trainable to ensure the gradient can pass through
-                for param in model.model.norm.parameters():
-                    param.requires_grad = True
-            
-            for param in model.medusa_head.parameters():
-                param.requires_grad = True
-
         replace_compute_loss(
             medusa_heads_coefficient=cfg.medusa_heads_coefficient,
             medusa_decay_coefficient=cfg.medusa_decay_coefficient,
@@ -469,6 +492,30 @@ def load_model(
             # cfg.lora_modules_to_save.append("lm_head")
 
     model, lora_config = load_adapter(model, cfg, cfg.adapter)
+
+    if cfg.medusa_num_heads is not None and cfg.medusa_only_heads:
+        LOG.info("Only training heads!!")
+        for param in model.parameters():
+            param.requires_grad = False
+        # Leave the last medusa_num_unfreeze_layers layers trainable
+        if cfg.medusa_num_unfreeze_layers > 0:
+            for layer in model.model.layers[-cfg.medusa_num_unfreeze_layers:]:
+                LOG.info(f"Unfreezing layer {layer}")
+                for param in layer.parameters():
+                    param.requires_grad = True
+            # Leave the last medusa_num_unfreeze_layers layers trainable to ensure the gradient can pass through
+            for param in model.model.norm.parameters():
+                param.requires_grad = True
+        
+        for param in model.medusa_head.parameters():
+            param.requires_grad = True
+
+        if cfg.gradient_checkpointing:
+            # https://github.com/huggingface/transformers/issues/21381#issuecomment-1666498410
+            from functools import partial
+            notfailing_checkpoint = partial(torch.utils.checkpoint.checkpoint, use_reentrant=False)
+            torch.utils.checkpoint.checkpoint = notfailing_checkpoint
+    
 
     if cfg.ddp and not load_in_8bit:
         model.to(f"cuda:{cfg.local_rank}")

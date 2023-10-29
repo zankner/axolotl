@@ -1,5 +1,5 @@
-base_model: lmsys/vicuna-13b-v1.5
-base_model_config: lmsys/vicuna-13b-v1.5
+base_model: lmsys/vicuna-33b-v1.3
+base_model_config: lmsys/vicuna-33b-v1.3
 model_type: LlamaForCausalLM
 tokenizer_type: LlamaTokenizer
 is_llama_derived_model: true
@@ -13,7 +13,7 @@ datasets:
     type: sharegpt
 dataset_prepared_path:
 val_set_size: 0.01
-output_dir: ./vicuna_13b_qlora_v3_lr_5e-4_medusa_5_1_0.2_0.8_sine_4.0_epoch_3
+output_dir: ./vicuna_33b_qlora_v3_lr_2.5e-4_medusa_5_1_0.0_0.8_sine_4.0_epoch_1_len2048
 
 adapter: qlora
 lora_model_dir:
@@ -34,7 +34,7 @@ lora_target_linear:
 lora_fan_in_fan_out:
 lora_modules_to_save:
 
-sequence_len: 4096
+sequence_len: 2048
 sample_packing: true
 pad_to_sequence_len: true
 
@@ -44,12 +44,12 @@ wandb_watch:
 wandb_run_id:
 wandb_log_model:
 
-gradient_accumulation_steps: 2
+gradient_accumulation_steps: 4
 micro_batch_size: 4
-num_epochs: 3
+num_epochs: 1
 optimizer: adamw_bnb_8bit
 lr_scheduler: cosine
-learning_rate: 0.0005
+learning_rate: 0.00025
 
 train_on_inputs: false
 group_by_length: false
@@ -81,7 +81,7 @@ special_tokens:
 
 medusa_num_heads: 5
 medusa_num_layers: 1
-medusa_heads_coefficient: 0.2
+medusa_heads_coefficient: 0.0
 medusa_decay_coefficient: 0.8
 medusa_logging: true
 medusa_scheduler: sine

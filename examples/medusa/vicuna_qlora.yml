@@ -11,15 +11,9 @@ strict: false
 datasets:
   - path: ShareGPT_Vicuna_unfiltered/ShareGPT_V4.3_unfiltered_cleaned_split.json
     type: sharegpt
-
-# bench_dataset:
-#   - mmlu
-# do_bench_eval: true
-# max_bench_samples: 1024
-
 dataset_prepared_path:
 val_set_size: 0.01
-output_dir: ./vicuna_qlora_v3_lr_1e-4_medusa_5_1_0.2_0.7_constant_10.0_epoch_2
+output_dir: ./vicuna_qlora_v3_lr_5e-4_medusa_5_1_0.2_0.8_sine_4.0_epoch_3
 
 adapter: qlora
 lora_model_dir:
@@ -52,10 +46,10 @@ wandb_log_model:
 
 gradient_accumulation_steps: 2
 micro_batch_size: 4
-num_epochs: 2
+num_epochs: 3
 optimizer: adamw_bnb_8bit
 lr_scheduler: cosine
-learning_rate: 0.0001
+learning_rate: 0.0005
 
 train_on_inputs: false
 group_by_length: false
@@ -88,7 +82,7 @@ special_tokens:
 medusa_num_heads: 5
 medusa_num_layers: 1
 medusa_heads_coefficient: 0.2
-medusa_decay_coefficient: 0.7
+medusa_decay_coefficient: 0.8
 medusa_logging: true
-medusa_scheduler: constant
-medusa_lr_multiplier: 10.0
+medusa_scheduler: sine
+medusa_lr_multiplier: 4.0
