@@ -1,5 +1,4 @@
 base_model: mistralai/Mistral-7B-v0.1
-base_model_config: mistralai/Mistral-7B-v0.1
 model_type: MistralForCausalLM
 tokenizer_type: LlamaTokenizer
 is_mistral_derived_model: true
@@ -19,8 +18,8 @@ adapter: qlora
 lora_model_dir:
 
 sequence_len: 8192
-sample_packing: True
-pad_to_sequence_len: True
+sample_packing: true
+pad_to_sequence_len: true
 
 lora_r: 32
 lora_alpha: 16
@@ -43,7 +42,7 @@ wandb_run_id:
 wandb_log_model:
 
 gradient_accumulation_steps: 4
-micro_batch_size: 4
+micro_batch_size: 2
 num_epochs: 1
 optimizer: adamw_bnb_8bit
 lr_scheduler: cosine
@@ -64,8 +63,8 @@ xformers_attention:
 flash_attention: true
 
 warmup_steps: 10
-eval_steps: 20
-eval_table_size: 5
+eval_steps: 0.05
+eval_table_size:
 eval_table_max_new_tokens: 128
 save_steps:
 debug:

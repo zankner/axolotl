@@ -1,5 +1,4 @@
 base_model: EleutherAI/gpt-j-6b
-base_model_config: EleutherAI/gpt-j-6b
 load_in_8bit: false
 load_in_4bit: true
 strict: false
@@ -47,7 +46,7 @@ flash_attention:
 gptq_groupsize:
 gptq_model_v1:
 warmup_steps: 10
-eval_steps: 20
+eval_steps: 0.05
 save_steps:
 debug:
 deepspeed:

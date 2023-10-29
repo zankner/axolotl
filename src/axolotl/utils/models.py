@@ -32,7 +32,7 @@ LOG = logging.getLogger("axolotl")
 
 def load_model_config(cfg):
     model_config_name = cfg.base_model_config or cfg.base_model
-    trust_remote_code: bool = False or cfg.trust_remote_code
+    trust_remote_code = cfg.trust_remote_code is True
     return AutoConfig.from_pretrained(
         model_config_name, trust_remote_code=trust_remote_code
     )
@@ -253,6 +253,20 @@ def load_model(
                 load_in_4bit=cfg.load_in_4bit and cfg.adapter is not None,
                 **model_kwargs,
             )
+
+            if cfg.flash_attention and not inference:
+                from axolotl.monkeypatch.llama_attn_hijack_flash import (
+                    replace_llama_mlp_with_swiglu,
+                    replace_llama_qkv_with_fused,
+                )
+
+                if cfg.flash_attn_fuse_mlp:
+                    LOG.info("patching with SwiGLU")
+                    replace_llama_mlp_with_swiglu(model)
+
+                if cfg.flash_attn_fuse_qkv:
+                    LOG.info("patching with fused QKV")
+                    replace_llama_qkv_with_fused(model)
         # elif model_type == "GPTNeoXForCausalLM" and cfg.flash_attention:
         #     This is a WIP, still an issue with the backward pass
         #     RuntimeError: grad can be implicitly created only for scalar outputs
@@ -412,6 +426,20 @@ def load_model(
             f"increasing model.config.max_position_embeddings from {model.config.max_position_embeddings} to {cfg.sequence_len}"
         )
         model.config.max_position_embeddings = cfg.sequence_len
+
+    if (
+        hasattr(model.config, "bos_token_id")
+        and model.config.bos_token_id
+        and model.config.bos_token_id != tokenizer.bos_token_id
+    ):
+        model.config.bos_token_id = tokenizer.bos_token_id
+
+    if (
+        hasattr(model.config, "eos_token_id")
+        and model.config.eos_token_id
+        and model.config.eos_token_id != tokenizer.eos_token_id
+    ):
+        model.config.eos_token_id = tokenizer.eos_token_id
 
     if model.device.type == "cuda":
         log_gpu_memory_usage(LOG, "after model load", model.device)
@@ -593,7 +621,11 @@ def find_all_linear_names(model):
     cls = (bnb.nn.Linear4bit, bnb.nn.Linear8bitLt, torch.nn.Linear, QuantLinear)
     lora_module_names = set()
     for name, module in model.named_modules():
-        if isinstance(module, cls) or "Linear" in module.__class__.__name__:
+        if (
+            isinstance(module, cls)
+            or "Linear" in module.__class__.__name__
+            and module.__class__.__name__ not in ("LlamaLinearScalingRotaryEmbedding",)
+        ):
             names = name.split(".")
             lora_module_names.add(names[0] if len(names) == 1 else names[-1])
 

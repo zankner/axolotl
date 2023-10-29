@@ -79,6 +79,9 @@ def normalize_config(cfg):
 
     cfg.dataset_processes = cfg.dataset_processes or os.cpu_count()
 
+    if not cfg.base_model_config:
+        cfg.base_model_config = cfg.base_model
+
     model_config = load_model_config(cfg)
     cfg.model_config_type = model_config.model_type
 
@@ -130,6 +133,9 @@ def normalize_config(cfg):
         if cfg.medusa_num_unfreeze_layers > 0:
             assert cfg.gradient_checkpointing is not True, "gradient_checkpointing is not supported with medusa_num_unfreeze_layers > 0"
         cfg.medusa_lr_multiplier = cfg.medusa_lr_multiplier if cfg.medusa_lr_multiplier is not None else 1.0
+        
+    if isinstance(cfg.learning_rate, str):
+        cfg.learning_rate = float(cfg.learning_rate)
 
     log_gpu_memory_usage(LOG, "baseline", cfg.device)
 
@@ -201,8 +207,14 @@ def validate_config(cfg):
             if not cfg.load_in_4bit:
                 raise ValueError("Require cfg.load_in_4bit to be True for qlora")
 
+        if cfg.flash_attn_fuse_qkv or cfg.flash_attn_fuse_mlp:
+            raise ValueError("Fused modules are not supported with QLoRA")
+
     if not cfg.load_in_8bit and cfg.adapter == "lora":
         LOG.warning("We recommend setting `load_in_8bit: true` for LORA finetuning")
+
+    if cfg.adapter == "lora" and (cfg.flash_attn_fuse_qkv or cfg.flash_attn_fuse_mlp):
+        raise ValueError("Fused modules are not supported with LoRA")
 
     if cfg.relora_steps:
         if cfg.adapter not in ("lora", "qlora"):
@@ -216,6 +228,9 @@ def validate_config(cfg):
 
         if cfg.lr_scheduler == "one_cycle":
             raise ValueError("ReLoRA is not compatible with the one_cycle scheduler")
+
+        if cfg.flash_attn_fuse_qkv or cfg.flash_attn_fuse_mlp:
+            raise ValueError("Fused modules are not supported with ReLoRA")
 
     if cfg.trust_remote_code:
         LOG.warning(
@@ -349,6 +364,21 @@ def validate_config(cfg):
     if cfg.val_set_size == 0 and (cfg.eval_steps or cfg.evaluation_strategy):
         raise ValueError(
             "eval_steps and evaluation_strategy are not supported with val_set_size == 0"
+        )
+
+    if (
+        cfg.sample_packing
+        and cfg.eval_table_size
+        and cfg.eval_sample_packing is not False
+    ):
+        raise ValueError(
+            "eval_table_size and eval_sample_packing are not supported together with sample_packing. Please set 'eval_sample_packing' to false."
+        )
+
+    if not cfg.adapter and (cfg.load_in_8bit or cfg.load_in_4bit):
+        raise ValueError(
+            "load_in_8bit and load_in_4bit are not supported without setting an adapter."
+            "If you want to full finetune, please turn off load_in_8bit and load_in_4bit."
         )
 
     # TODO

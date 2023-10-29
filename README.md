@@ -32,7 +32,6 @@ Features:
   - [How to Use Custom Pretokenized Dataset](#how-to-use-your-custom-pretokenized-dataset)
 - [Config](#config)
   - [Train](#train)
-  - [Training w/ Deepspeed](#training-with-deepspeed)
   - [Inference](#inference)
   - [Merge LORA to Base](#merge-lora-to-base)
 - [Common Errors](#common-errors-)
@@ -114,6 +113,25 @@ accelerate launch -m axolotl.cli.inference examples/openllama-3b/lora.yml \
   ```sh
   docker compose up -d
   ```
+
+  <details>
+
+  <summary>Docker advanced</summary>
+
+  A more powerful Docker command to run would be this:
+
+  ```bash
+  docker run --gpus '"all"' --rm -it --name axolotl --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 --mount type=volume,src=axolotl,target=/workspace/axolotl -v ${HOME}/.cache/huggingface:/root/.cache/huggingface winglian/axolotl:main-py3.10-cu118-2.0.1
+  ```
+
+  It additionally:
+  * Prevents memory issues when running e.g. deepspeed (e.g. you could hit SIGBUS/signal 7 error) through `--ipc` and `--ulimit` args.
+  * Persists the downloaded HF data (models etc.) and your modifications to axolotl code through `--mount`/`-v` args.
+  * The `--name` argument simply makes it easier to refer to the container in vscode (`Dev Containers: Attach to Running Container...`) or in your terminal.
+
+  [More information on nvidia website](https://docs.nvidia.com/deeplearning/frameworks/user-guide/index.html#setincshmem)
+
+  </details>
 
 #### Conda/Pip venv
   1. Install python >=**3.9**
@@ -297,24 +315,23 @@ Have dataset(s) in one of the following format (JSONL recommended):
 
 #### How to add custom prompts
 
-Using yaml. Example:
+For a dataset that is preprocessed for instruction purposes:
+
+```json
+{"instruction": "...", "output": "..."}
+```
+
+You can use this example in your YAML config:
+
 ```yaml
 datasets:
   - path: repo
     type:
       system_prompt: ""
-      no_input_format: |-
-        User: {instruction}<|end_of_turn|>
-        Assistant:
-      format: |-
-        User: {instruction}
-        {input}<|end_of_turn|>
-        Assistant:
+      field_system: system
+      format: "[INST] {instruction} [/INST]"
+      no_input_format: "[INST] {instruction} [/INST]"
 ```
-
-Using file:
-1. Add your method to a file in [prompt_strategies](src/axolotl/prompt_strategies). Please see other files as example.
-2. Use your custom file name as the dataset type `<prompt_strategies_file>.load_<load_fn>`.
 
 #### How to use your custom pretokenized dataset
 
@@ -357,6 +374,13 @@ See [examples](examples) for quick start. It is recommended to duplicate and mod
         - typescript
       type: ... # unimplemented custom format
 
+  # fastchat conversation
+  # See 'conversation' options: https://github.com/lm-sys/FastChat/blob/main/fastchat/conversation.py
+  datasets:
+    - path: ...
+      type: sharegpt
+      conversation: chatml
+
   # local
   datasets:
     - path: data.jsonl # or json
@@ -395,7 +419,7 @@ See [examples](examples) for quick start. It is recommended to duplicate and mod
 
 <details>
 
-<summary>All yaml options</summary>
+<summary>All yaml options (click me)</summary>
 
 ```yaml
 # This is the huggingface model that contains *.pt, *.safetensors, or *.bin files
@@ -462,19 +486,22 @@ datasets:
     data_files: # Optional[str] path to source data files
     shards: # Optional[int] number of shards to split data into
     name: # Optional[str] name of dataset configuration to load
-    conversation:  # Optional[str] fastchat conversation type, only used with type: sharegpt
+
+    # Optional[str] fastchat conversation type, only used with type: sharegpt
+    conversation:  # Options (see Conversation 'name'): https://github.com/lm-sys/FastChat/blob/main/fastchat/conversation.py
 
   # Custom user prompt
   - path: repo
     type:
       # The below are defaults. only set what's needed.
       system_prompt: ""
+      system_format: "{system}"
       field_system: system
       field_instruction: instruction
-      field_output: input
+      field_input: input
+      field_output: output
 
       # Customizable to be single line or multi-line
-      system_format: "{system}"
       # 'format' can include {input}
       format: |-
         User: {instruction} {input}
@@ -482,7 +509,7 @@ datasets:
       # 'no_input_format' cannot include {input}
       no_input_format: "{instruction} "
 
-      # For completions datsets, uses the provided field if not `text`
+      # For `completion` datsets only, uses the provided field instead of `text` column
       field:
 
 # Axolotl attempts to save the dataset as an arrow after packing the data together so
@@ -591,14 +618,14 @@ gradient_accumulation_steps: 1
 # The number of samples to include in each batch. This is the number of samples sent to each GPU.
 micro_batch_size: 2
 eval_batch_size:
-num_epochs: 3
+num_epochs: 4
 warmup_steps: 100
 learning_rate: 0.00003
 lr_quadratic_warmup:
 logging_steps:
 save_strategy: # Set to `no` to skip checkpoint saves
 save_steps: # Leave empty to save at each epoch
-eval_steps: # Leave empty to eval at each epoch
+eval_steps: # Leave empty to eval at each epoch, integers for every N steps. decimal for fraction of total steps
 save_total_limit: # Checkpoints saved at a time
 # Maximum number of iterations to train for. It precedes num_epochs which means that
 # if both are set, num_epochs will not be guaranteed.
@@ -671,6 +698,11 @@ adam_epsilon:
 # Gradient clipping max norm
 max_grad_norm:
 
+# Augmentation techniques
+# NEFT https://arxiv.org/abs/2310.05914, set this to a number (paper default is 5) to add noise to embeddings
+# currently only supported on Llama and Mistral
+noisy_embedding_alpha:
+
 # Whether to bettertransformers
 flash_optimum:
 # Whether to use xformers attention patch https://github.com/facebookresearch/xformers:
@@ -679,6 +711,8 @@ xformers_attention:
 flash_attention:
 flash_attn_cross_entropy:  # Whether to use flash-attention cross entropy implementation - advanced use only
 flash_attn_rms_norm:  # Whether to use flash-attention rms norm implementation - advanced use only
+flash_attn_fuse_qkv: # Whether to fuse QKV into a single operation
+flash_attn_fuse_mlp: # Whether to fuse part of the MLP into a single operation
 # Whether to use scaled-dot-product attention
 # https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html
 sdp_attention:
@@ -808,14 +842,41 @@ Run
 accelerate launch -m axolotl.cli.train your_config.yml
 ```
 
-#### Multi-GPU
+#### Preprocess dataset
 
-You can optionally pre-tokenize dataset with the following before finetuning:
+You can optionally pre-tokenize dataset with the following before finetuning.
+This is recommended for large datasets.
+
+- Set `push_dataset_to_hub: hf_user/repo` to push it to Huggingface.
+- Use `--debug` to see preprocessed examples.
+
 ```bash
-CUDA_VISIBLE_DEVICES="" accelerate launch -m axolotl.cli.train your_config.yml --prepare_ds_only
+python -m axolotl.cli.preprocess your_config.yml
 ```
 
-##### Config
+#### Multi-GPU
+
+Below are the options available in axolotl for training with multiple GPUs. Note that DeepSpeed
+is the recommended multi-GPU option currently because FSDP may experience
+[loss instability](https://github.com/huggingface/transformers/issues/26498).
+
+##### DeepSpeed
+
+Deepspeed is an optimization suite for multi-gpu systems allowing you to train much larger models than you
+might typically be able to fit into your GPU's VRAM. More information about the various optimization types
+for deepspeed is available at https://huggingface.co/docs/accelerate/main/en/usage_guides/deepspeed#what-is-integrated
+
+We provide several default deepspeed JSON configurations for ZeRO stage 1, 2, and 3.
+
+```yaml
+deepspeed: deepspeed/zero1.json
+```
+
+```shell
+accelerate launch -m axolotl.cli.train examples/llama-2/config.py --deepspeed deepspeed/zero1.json
+```
+
+##### FSDP
 
 - llama FSDP
 ```yaml
@@ -840,24 +901,6 @@ wandb_run_id:
 wandb_log_model:
 ```
 
-### Training with Deepspeed
-
-Deepspeed is an optimization suite for multi-gpu systems allowing you to train much larger models than you
-might typically be able to fit into your GPU's VRAM. More information about the various optimization types
-for deepspeed is available at https://huggingface.co/docs/accelerate/main/en/usage_guides/deepspeed#what-is-integrated
-
-We provide several default deepspeed JSON configurations for ZeRO stage 1, 2, and 3.
-
-```shell
-accelerate launch -m axolotl.cli.train examples/llama-2/config.py --deepspeed deepspeed/zero1.json
-```
-
-or
-
-```yaml
-deepspeed: deepspeed/zero1.json
-```
-
 ### Inference
 
 Pass the appropriate flag to the train command:
@@ -876,6 +919,10 @@ Pass the appropriate flag to the train command:
     --base_model="./completed-model" --prompter=None --load_in_8bit=True
   ```
 
+Please use `--sample_packing False` if you have it on and receive the error similar to below:
+
+> RuntimeError: stack expects each tensor to be equal size, but got [1, 32, 1, 128] at entry 0 and [1, 32, 8, 128] at entry 1
+
 ### Merge LORA to base
 
 Add below flag to train command above
@@ -891,6 +938,8 @@ CUDA_VISIBLE_DEVICES="" python3 -m axolotl.cli.merge_lora ...
 ```
 
 ## Common Errors 🧰
+
+See also the [FAQ's](./docs/faq.md).
 
 > If you encounter a 'Cuda out of memory' error, it means your GPU ran out of memory during the training process. Here's how to resolve it:
 
