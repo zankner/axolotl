@@ -19,6 +19,7 @@ IGNORE_TOKEN_ID = LabelSmoother.ignore_index
 import types
 import math
 import wandb
+import transformers
 
 logger = LOG = logging.getLogger("axolotl.monkeypatch.medusa")
 
@@ -91,6 +92,8 @@ def add_medusa_heads(
     """
     hidden_size = self.lm_head.weight.shape[-1]
     vocab_size = self.lm_head.weight.shape[0]
+    self.config.medusa_num_layers = medusa_num_layers
+    self.config.medusa_num_heads = medusa_num_heads
     self.medusa_num_heads = medusa_num_heads
     # Create a list of Medusa heads
     self.medusa_head = nn.ModuleList(
@@ -170,6 +173,8 @@ def replace_compute_loss(
     medusa_scheduler="constant",
     medusa_logging=False,
     medusa_only_heads=False,
+    medusa_distillation_regularization=0.0,
+    medusa_self_distillation=False,
 ):
     def compute_loss(self, model, inputs, return_outputs=False):
         """
@@ -183,6 +188,22 @@ def replace_compute_loss(
         Returns:
             Union[float, Tuple[float, torch.Tensor]]: The computed loss, optionally with model outputs.
         """
+        if medusa_self_distillation:
+            from peft.tuners.tuners_utils import BaseTunerLayer
+            with torch.inference_mode():
+                # Get the output of the original model for distillation
+                for module in model.modules():
+                    if isinstance(module, (BaseTunerLayer)):
+                        module.enable_adapters(False)
+                
+                original_logits = model(
+                    **inputs,
+                    medusa_return=False,
+                ).logits
+
+                for module in model.modules():
+                    if isinstance(module, (BaseTunerLayer)):
+                        module.enable_adapters(True)
 
         logits = model(
             **inputs,
@@ -200,7 +221,30 @@ def replace_compute_loss(
             medusa_logits = medusa_logits.view(-1, logits.shape[-1])
             medusa_labels = medusa_labels.view(-1)
             medusa_labels = medusa_labels.to(medusa_logits.device)
-            loss_i = loss_fct(medusa_logits, medusa_labels)
+            if i == 0:
+                if medusa_self_distillation:
+                    original_logits = original_logits[:, :-1].contiguous().view(-1, original_logits.shape[-1])
+                    mask = medusa_labels.ne(IGNORE_TOKEN_ID)
+                    soft_labels = F.softmax(original_logits[mask], dim=-1)
+                    loss_i = F.kl_div(
+                        F.log_softmax(medusa_logits[mask], dim=-1),
+                        soft_labels,
+                        reduction="sum",
+                    ) / medusa_logits.shape[0]
+                elif medusa_distillation_regularization > 0:
+                    # use soft labels
+                    mask = medusa_labels.ne(IGNORE_TOKEN_ID)
+                    soft_labels = F.softmax(medusa_logits[mask], dim=-1) * medusa_distillation_regularization + \
+                        F.one_hot(medusa_labels[mask], num_classes=medusa_logits.shape[-1]) * (1 - medusa_distillation_regularization)
+                    loss_i = F.kl_div(
+                        F.log_softmax(medusa_logits[mask], dim=-1),
+                        soft_labels,
+                        reduction="sum",
+                    ) / medusa_logits.shape[0]
+                else:
+                    loss_i = loss_fct(medusa_logits, medusa_labels)
+            else:
+                loss_i = loss_fct(medusa_logits, medusa_labels)
             # Compute the coefficient for medusa losses
             if medusa_scheduler == "sine":
                 medusa_scheduler_coefficient = math.sin(
@@ -249,7 +293,7 @@ def replace_compute_loss(
                 "train/global_step": self.state.global_step,
             })
         return (loss, logits) if return_outputs else loss
-    axolotl.utils.trainer.Trainer.compute_loss = compute_loss
+    transformers.trainer.Trainer.compute_loss = compute_loss
 
 def replace_create_optimizer(
     medusa_lr_multiplier,
@@ -319,4 +363,4 @@ def replace_create_optimizer(
             self.optimizer = smp.DistributedOptimizer(self.optimizer)
 
         return self.optimizer
-    axolotl.utils.trainer.Trainer.create_optimizer = create_optimizer
+    transformers.trainer.Trainer.create_optimizer = create_optimizer

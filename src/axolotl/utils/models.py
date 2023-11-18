@@ -500,6 +500,8 @@ def load_model(
             medusa_scheduler=cfg.medusa_scheduler,
             medusa_logging=cfg.medusa_logging,
             medusa_only_heads=cfg.medusa_only_heads,
+            medusa_distillation_regularization=cfg.medusa_distillation_regularization,
+            medusa_self_distillation=cfg.medusa_self_distillation,
         )
 
         if cfg.medusa_lr_multiplier != 1:
@@ -521,8 +523,8 @@ def load_model(
 
     model, lora_config = load_adapter(model, cfg, cfg.adapter)
 
-    if cfg.medusa_num_heads is not None and cfg.medusa_only_heads:
-        LOG.info("Only training heads!!")
+    if cfg.medusa_num_heads is not None and cfg.medusa_only_heads or cfg.medusa_num_unfreeze_layers > 0:
+        LOG.info("Freeze layers!")
         for param in model.parameters():
             param.requires_grad = False
         # Leave the last medusa_num_unfreeze_layers layers trainable
@@ -537,6 +539,10 @@ def load_model(
         
         for param in model.medusa_head.parameters():
             param.requires_grad = True
+
+        if not cfg.medusa_only_heads:
+            for param in model.lm_head.parameters():
+                param.requires_grad = True
 
         if cfg.gradient_checkpointing:
             # https://github.com/huggingface/transformers/issues/21381#issuecomment-1666498410

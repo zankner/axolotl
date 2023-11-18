@@ -9,11 +9,11 @@ load_in_4bit: true
 strict: false
 
 datasets:
-  - path: ShareGPT_Vicuna_unfiltered/ShareGPT_V4.3_unfiltered_cleaned_split.json
+  - path: sharegpt_mix.json
     type: sharegpt
 dataset_prepared_path:
 val_set_size: 0.01
-output_dir: ./vicuna_33b_qlora_v4_lr_2.5e-4_medusa_5_1_0.2_0.8_constant_4.0_epoch_2_stage1
+output_dir: ./vicuna_33b_qlora_v4_lr_2.5e-4_medusa_5_1_0.2_0.8_constant_4.0_epoch_2_stage1_gpt4
 
 adapter: qlora
 lora_model_dir:
