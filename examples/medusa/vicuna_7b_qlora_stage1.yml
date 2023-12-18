@@ -13,7 +13,7 @@ datasets:
     type: sharegpt
 dataset_prepared_path:
 val_set_size: 0.01
-output_dir: ./vicuna_7b_qlora_v4_lr_5e-4_medusa_5_1_0.2_0.8_constant_4.0_epoch_2_stage1
+output_dir: ./vicuna_7b_qlora_stage1
 
 adapter: qlora
 lora_model_dir:
@@ -38,7 +38,7 @@ sequence_len: 4096
 sample_packing: true
 pad_to_sequence_len: true
 
-wandb_project: medusa_vicuna_1.5_v1
+wandb_project:
 wandb_entity:
 wandb_watch:
 wandb_run_id:

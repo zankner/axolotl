@@ -25,7 +25,11 @@ from transformers import (  # noqa: F401
 from axolotl.prompt_tokenizers import LLAMA_DEFAULT_EOS_TOKEN
 from axolotl.utils.bench import log_gpu_memory_usage
 from axolotl.utils.dict import DictDefault
-from axolotl.monkeypatch.medusa_utils import replace_compute_loss, add_medusa_heads, replace_create_optimizer
+from axolotl.monkeypatch.medusa_utils import (
+    replace_compute_loss,
+    add_medusa_heads,
+    replace_create_optimizer,
+)
 
 LOG = logging.getLogger("axolotl")
 
@@ -387,16 +391,20 @@ def load_model(
 
                     quant_state[2] = dtype
 
-                    weights = dequantize_4bit(module.weight.data, quant_state=quant_state, quant_type="nf4").to(dtype)
+                    weights = dequantize_4bit(
+                        module.weight.data, quant_state=quant_state, quant_type="nf4"
+                    ).to(dtype)
 
-                    new_module = torch.nn.Linear(module.in_features, module.out_features, bias=None, dtype=dtype)
+                    new_module = torch.nn.Linear(
+                        module.in_features, module.out_features, bias=None, dtype=dtype
+                    )
                     new_module.weight = torch.nn.Parameter(weights)
                     new_module.to(device=device, dtype=dtype)
 
                     parent, target, target_name = _get_submodules(model, name)
                     setattr(parent, target_name, new_module)
                     del module
-            
+
             gc.collect()
             torch.cuda.empty_cache()
 
@@ -478,6 +486,48 @@ def load_model(
                 if hasattr(module, "weight"):
                     module.to(cfg.torch_dtype)
 
+    if cfg.logging_topk is not None:
+        import wandb
+
+        def compute_loss(self, model, inputs, return_outputs=False):
+            outputs = model(**inputs)
+            logits = outputs.logits
+            labels = inputs["labels"]
+            loss = outputs.loss
+
+            logs = {}
+
+            # shift
+            logits = logits[..., :-1, :].contiguous()
+            labels = labels[..., 1:].contiguous()
+            not_ignore_mask = labels != -100
+
+            for k in range(1, cfg.logging_topk + 1):
+                # compute top-k accuracy
+                _, topk_indices = logits.topk(k, dim=-1)
+                correct = topk_indices == labels.unsqueeze(-1)
+                correct = correct.sum(-1)
+                correct = correct.masked_select(not_ignore_mask).sum()
+                accuracy = correct.float() / not_ignore_mask.sum()
+                logs[f"top_{k}"] = accuracy
+
+            if model.training:
+                prefix = "train"
+            else:
+                prefix = "eval"
+
+            logs = {f"{prefix}/{k}": v for k, v in logs.items()}
+            if self.state.is_world_process_zero:
+                wandb.log(
+                    {
+                        **logs,
+                        "train/global_step": self.state.global_step,
+                    }
+                )
+
+            return (loss, outputs) if return_outputs else loss
+        transformers.trainer.Trainer.compute_loss = compute_loss
+
     # Add support for Medusa (https://github.com/FasterDecoding/Medusa)
     if cfg.medusa_num_heads is not None:
         from transformers import LlamaForCausalLM, MistralForCausalLM
@@ -486,7 +536,9 @@ def load_model(
             model, (LlamaForCausalLM, MistralForCausalLM)
         ), "Medusa is only supported for Llama and Mistral models for now"
 
-        LOG.info(f"using Medusa with {cfg.medusa_num_heads} heads, {cfg.medusa_num_layers} layers, {cfg.medusa_decay_coefficient} decay coefficient, {cfg.medusa_heads_coefficient} heads coefficient, {cfg.medusa_scheduler} scheduler, {cfg.medusa_logging} logging")
+        LOG.info(
+            f"using Medusa with {cfg.medusa_num_heads} heads, {cfg.medusa_num_layers} layers, {cfg.medusa_decay_coefficient} decay coefficient, {cfg.medusa_heads_coefficient} heads coefficient, {cfg.medusa_scheduler} scheduler, {cfg.medusa_logging} logging"
+        )
 
         add_medusa_heads(
             model,
@@ -509,7 +561,7 @@ def load_model(
             replace_create_optimizer(
                 medusa_lr_multiplier=cfg.medusa_lr_multiplier,
             )
-        
+
         if cfg.adapter in ["lora", "qlora"]:
             # Add medusa heads to cfg.lora_modules_to_save
             if cfg.lora_modules_to_save is None:
@@ -523,20 +575,22 @@ def load_model(
 
     model, lora_config = load_adapter(model, cfg, cfg.adapter)
 
-    if cfg.medusa_num_heads is not None and cfg.medusa_only_heads or cfg.medusa_num_unfreeze_layers > 0:
+    if cfg.medusa_num_heads is not None and (
+        cfg.medusa_only_heads or cfg.medusa_num_unfreeze_layers > 0
+    ):
         LOG.info("Freeze layers!")
         for param in model.parameters():
             param.requires_grad = False
         # Leave the last medusa_num_unfreeze_layers layers trainable
         if cfg.medusa_num_unfreeze_layers > 0:
-            for layer in model.model.layers[-cfg.medusa_num_unfreeze_layers:]:
+            for layer in model.model.layers[-cfg.medusa_num_unfreeze_layers :]:
                 LOG.info(f"Unfreezing layer {layer}")
                 for param in layer.parameters():
                     param.requires_grad = True
             # Leave the last medusa_num_unfreeze_layers layers trainable to ensure the gradient can pass through
             for param in model.model.norm.parameters():
                 param.requires_grad = True
-        
+
         for param in model.medusa_head.parameters():
             param.requires_grad = True
 
@@ -547,9 +601,11 @@ def load_model(
         if cfg.gradient_checkpointing:
             # https://github.com/huggingface/transformers/issues/21381#issuecomment-1666498410
             from functools import partial
-            notfailing_checkpoint = partial(torch.utils.checkpoint.checkpoint, use_reentrant=False)
+
+            notfailing_checkpoint = partial(
+                torch.utils.checkpoint.checkpoint, use_reentrant=False
+            )
             torch.utils.checkpoint.checkpoint = notfailing_checkpoint
-    
 
     if cfg.ddp and not load_in_8bit:
         model.to(f"cuda:{cfg.local_rank}")

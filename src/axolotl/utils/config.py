@@ -379,7 +379,7 @@ def validate_config(cfg):
             "eval_table_size and eval_sample_packing are not supported together with sample_packing. Please set 'eval_sample_packing' to false."
         )
 
-    if not cfg.adapter and (cfg.load_in_8bit or cfg.load_in_4bit):
+    if not cfg.adapter and not cfg.medusa_only_heads and (cfg.load_in_8bit or cfg.load_in_4bit):
         raise ValueError(
             "load_in_8bit and load_in_4bit are not supported without setting an adapter."
             "If you want to full finetune, please turn off load_in_8bit and load_in_4bit."

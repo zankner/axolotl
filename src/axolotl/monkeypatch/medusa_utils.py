@@ -128,6 +128,7 @@ def add_medusa_heads(
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         medusa_return: bool = False,
+        medusa_only_heads: bool = False,
     ):
         """Forward pass of the MedusaModel.
         Returns:
@@ -148,19 +149,35 @@ def add_medusa_heads(
                 return_dict=return_dict,
             )
         # Pass input through the base model
-        outputs = self.model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_values=past_key_values,
-            inputs_embeds=inputs_embeds,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
-        hidden_states = outputs[0]
-        medusa_logits = [self.lm_head(hidden_states)]
+        if medusa_only_heads:
+            with torch.no_grad():
+                outputs = self.model(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                    past_key_values=past_key_values,
+                    inputs_embeds=inputs_embeds,
+                    use_cache=use_cache,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                    return_dict=return_dict,
+                )
+                hidden_states = outputs[0]
+                medusa_logits = [self.lm_head(hidden_states)]
+        else:
+            outputs = self.model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                inputs_embeds=inputs_embeds,
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
+            hidden_states = outputs[0]
+            medusa_logits = [self.lm_head(hidden_states)]
         for i in range(self.medusa_num_heads):
             medusa_logits.append(self.medusa_head[i](hidden_states))
         return torch.stack(medusa_logits, dim=0)
@@ -208,6 +225,7 @@ def replace_compute_loss(
         logits = model(
             **inputs,
             medusa_return=True,
+            medusa_only_heads=medusa_only_heads,
         )
         labels = inputs["labels"]
         # Shift so that tokens < n predict n
@@ -256,6 +274,14 @@ def replace_compute_loss(
                 )
             elif medusa_scheduler == "constant":
                 medusa_scheduler_coefficient = 1
+            elif medusa_scheduler.startswith("sine"):
+                ratio = float(medusa_scheduler.split("_")[1])
+                if self.state.global_step / self.state.max_steps < ratio:
+                    medusa_scheduler_coefficient = math.sin(
+                        self.state.global_step / self.state.max_steps / ratio * math.pi / 2
+                    )
+                else:
+                    medusa_scheduler_coefficient = 1
             else:
                 raise ValueError(
                     f"Invalid medusa_scheduler: {medusa_scheduler}. "
@@ -364,3 +390,86 @@ def replace_create_optimizer(
 
         return self.optimizer
     transformers.trainer.Trainer.create_optimizer = create_optimizer
+
+    # Fix deepspeed's optimizer
+    def deepspeed_init(trainer, num_training_steps, inference=False):
+        """
+        Init DeepSpeed, after updating the DeepSpeed configuration with any relevant Trainer's args.
+
+        If `resume_from_checkpoint` was passed then an attempt to resume from a previously saved checkpoint will be made.
+
+        Args:
+            trainer: Trainer object
+            num_training_steps: per single gpu
+            resume_from_checkpoint: path to a checkpoint if to resume from after normal DeepSpeedEngine load
+            inference: launch in inference mode (no optimizer and no lr scheduler)
+
+        Returns: optimizer, lr_scheduler
+
+        We may use `deepspeed_init` more than once during the life of Trainer, when we do - it's a temp hack based on:
+        https://github.com/microsoft/DeepSpeed/issues/1394#issuecomment-937405374 until Deepspeed fixes a bug where it
+        can't resume from a checkpoint after it did some stepping https://github.com/microsoft/DeepSpeed/issues/1612
+
+        """
+        from deepspeed.utils import logger as ds_logger
+        from transformers.integrations.deepspeed import deepspeed_optim_sched
+
+        model = trainer.model
+        args = trainer.args
+
+        hf_deepspeed_config = trainer.accelerator.state.deepspeed_plugin.hf_ds_config
+
+        # resume config update - some bits like `model` and `num_training_steps` only become available during train
+        hf_deepspeed_config.trainer_config_finalize(args, model, num_training_steps)
+
+        # set the Deepspeed log level consistent with the Trainer
+        ds_logger.setLevel(args.get_process_log_level())
+
+        if inference:
+            # only Z3 makes sense for the inference
+            if not hf_deepspeed_config.is_zero3():
+                raise ValueError("ZeRO inference only makes sense with ZeRO Stage 3 - please adjust your config")
+
+            # in case the training config is re-used for inference
+            hf_deepspeed_config.del_config_sub_tree("optimizer")
+            hf_deepspeed_config.del_config_sub_tree("lr_scheduler")
+            optimizer, lr_scheduler = None, None
+            model_parameters = None
+        else:
+            trainer.optimizer = None  # important for when deepspeed_init is used as re-init
+            self = trainer
+            opt_model = model
+            decay_parameters = self.get_decay_parameter_names(opt_model)
+            model_parameters = [
+                {
+                    "params": [
+                        p for n, p in opt_model.named_parameters() if (n in decay_parameters and p.requires_grad and "medusa_head" not in n)
+                    ],
+                    "weight_decay": self.args.weight_decay,
+                },
+                {
+                    "params": [
+                        p for n, p in opt_model.named_parameters() if (n in decay_parameters and p.requires_grad and "medusa_head" in n)
+                    ],
+                    "weight_decay": self.args.weight_decay,
+                    "lr": self.args.learning_rate * medusa_lr_multiplier,
+                },
+                
+                {
+                    "params": [
+                        p for n, p in opt_model.named_parameters() if (n not in decay_parameters and p.requires_grad)
+                    ],
+                    "weight_decay": 0.0,
+                },
+            ]
+            
+            # list(filter(lambda p: p.requires_grad, model.parameters()))
+            optimizer, lr_scheduler = deepspeed_optim_sched(
+                trainer, hf_deepspeed_config, args, num_training_steps, model_parameters
+            )
+
+        # keep for quick debug:
+        # from pprint import pprint; pprint(config)
+
+        return optimizer, lr_scheduler
+    transformers.integrations.deepspeed.deepspeed_init = deepspeed_init
