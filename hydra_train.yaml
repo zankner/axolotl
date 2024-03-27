@@ -1,0 +1,45 @@
+name: hydra
+image: mosaicml/pytorch:2.2.1_cu121-python3.11-ubuntu20.04
+compute:
+  cluster: r1z1
+  gpus: 8
+scheduling:
+  resumable: false
+  priority: medium
+integrations:
+- integration_type: git_repo
+  git_branch: main
+  git_repo: zankner/axolotl
+  pip_install: .[flash-attn,deepspeed]
+  ssh_clone: true
+- integration_type: wandb
+  entity: mosaic-ml
+  project: colm-hydra-decoding
+- integration_type: apt_packages
+  packages:
+  - git-lfs
+- integration_type: pip_packages
+  packages:
+  - oci-cli
+
+command: 'source /secrets/secrets.env
+
+  export AWS_PROFILE=data-force-one
+
+  cd axolotl
+
+  git lfs install
+
+  git clone https://huggingface.co/datasets/Aeala/ShareGPT_Vicuna_unfiltered
+
+  accelerate launch -m axolotl.cli.train examples/hydra/colm/{STAGE_1_NAME}
+
+  accelerate launch -m axolotl.cli.train examples/hydra/colm/{STAGE_2_NAME}
+
+  python -m axolotl.cli.merge_lora examples/hydra/colm/{STAGE_1_NAME}
+
+  python -m axolotl.cli.merge_lora examples/hydra/colm/{STAGE_2_NAME}
+
+  oci os object bulk-upload -bn mosaicml-internal-checkpoints --src-dir ckpts --prefix zack/colm-hydra-decoding
+  
+'
