@@ -1,8 +1,10 @@
-base_model: lmsys/vicuna-7b-v1.5
-base_model_config: lmsys/vicuna-7b-v1.5
+base_model: lmsys/vicuna-7b-v1.3
+base_model_config: lmsys/vicuna-7b-v1.3
 model_type: LlamaForCausalLM
 tokenizer_type: LlamaTokenizer
 is_llama_derived_model: true
+
+seed: 17
 
 load_in_8bit: false
 load_in_4bit: true
@@ -13,7 +15,7 @@ datasets:
     type: sharegpt
 dataset_prepared_path: /tmp/prepared-data
 val_set_size: 0.01
-output_dir: ./vicuna_7b_qlora_stage1
+output_dir: ./ckpts/hydra_vicuna_7b_qlora_stage1_sd_17
 
 adapter: qlora
 lora_model_dir:
@@ -34,14 +36,14 @@ lora_target_linear:
 lora_fan_in_fan_out:
 lora_modules_to_save:
 
-sequence_len: 4096
+sequence_len: 2048
 sample_packing: true
 pad_to_sequence_len: true
 
-wandb_project: medusa_test
+wandb_project: colm-hydra-decoding
 wandb_entity:
 wandb_watch:
-wandb_run_id:
+wandb_run_id: hydra_vicuna_7b_qlora_stage1_sd_17
 wandb_log_model:
 
 gradient_accumulation_steps: 4
@@ -79,14 +81,16 @@ special_tokens:
   eos_token: "</s>"
   unk_token: "<unk>"
 
-medusa_num_heads: 5
-medusa_num_layers: 1
-medusa_heads_coefficient: 0.2
-medusa_decay_coefficient: 0.8
-medusa_logging: true
-medusa_scheduler: constant
-medusa_lr_multiplier: 4.0
-medusa_only_heads: true
+grounded_heads: true
+hydra_head_arch: mlp
+hydra_num_heads: 5
+hydra_num_layers: 1
+hydra_heads_coefficient: 1.0
+hydra_decay_coefficient: 0.8
+hydra_logging: true
+hydra_scheduler: constant
+hydra_lr_multiplier: 4.0
+hydra_only_heads: true
 ddp_find_unused_parameters: true
-# Stage 1: only train the medusa heads
+# Stage 1: only train the hydra heads
 # Stage 2: train the whole model

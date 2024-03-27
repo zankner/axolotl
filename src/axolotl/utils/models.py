@@ -25,9 +25,9 @@ from transformers import (  # noqa: F401
 from axolotl.prompt_tokenizers import LLAMA_DEFAULT_EOS_TOKEN
 from axolotl.utils.bench import log_gpu_memory_usage
 from axolotl.utils.dict import DictDefault
-from axolotl.monkeypatch.medusa_utils import (
+from axolotl.monkeypatch.hydra_utils import (
     replace_compute_loss,
-    add_medusa_heads,
+    add_hydra_heads,
     replace_create_optimizer,
 )
 
@@ -528,73 +528,77 @@ def load_model(
             return (loss, outputs) if return_outputs else loss
         transformers.trainer.Trainer.compute_loss = compute_loss
 
-    # Add support for Medusa (https://github.com/FasterDecoding/Medusa)
-    if cfg.medusa_num_heads is not None:
+    # Add support for Hydra (https://github.com/FasterDecoding/Hydra)
+    if cfg.hydra_num_heads is not None:
         from transformers import LlamaForCausalLM, MistralForCausalLM
 
         assert isinstance(
             model, (LlamaForCausalLM, MistralForCausalLM)
-        ), "Medusa is only supported for Llama and Mistral models for now"
+        ), "Hydra is only supported for Llama and Mistral models for now"
 
         LOG.info(
-            f"using Medusa with {cfg.medusa_num_heads} heads, {cfg.medusa_num_layers} layers, {cfg.medusa_decay_coefficient} decay coefficient, {cfg.medusa_heads_coefficient} heads coefficient, {cfg.medusa_scheduler} scheduler, {cfg.medusa_logging} logging"
+            f"using Hydra with {cfg.hydra_num_heads} heads, {cfg.hydra_num_layers} layers, {cfg.hydra_decay_coefficient} decay coefficient, {cfg.hydra_heads_coefficient} heads coefficient, {cfg.hydra_scheduler} scheduler, {cfg.hydra_logging} logging"
         )
 
-        add_medusa_heads(
+        add_hydra_heads(
             model,
-            medusa_num_heads=cfg.medusa_num_heads,
-            medusa_num_layers=cfg.medusa_num_layers,
+            hydra_num_heads=cfg.hydra_num_heads,
+            hydra_num_layers=cfg.hydra_num_layers,
+            grounded_heads=cfg.grounded_heads
         )
+
+        # print(model)
+        # import sys; sys.exit()
 
         replace_compute_loss(
-            medusa_heads_coefficient=cfg.medusa_heads_coefficient,
-            medusa_decay_coefficient=cfg.medusa_decay_coefficient,
-            medusa_scheduler=cfg.medusa_scheduler,
-            medusa_logging=cfg.medusa_logging,
-            medusa_only_heads=cfg.medusa_only_heads,
-            medusa_distillation_regularization=cfg.medusa_distillation_regularization,
-            medusa_self_distillation=cfg.medusa_self_distillation,
+            hydra_heads_coefficient=cfg.hydra_heads_coefficient,
+            hydra_decay_coefficient=cfg.hydra_decay_coefficient,
+            hydra_scheduler=cfg.hydra_scheduler,
+            hydra_logging=cfg.hydra_logging,
+            hydra_only_heads=cfg.hydra_only_heads,
+            hydra_distillation_regularization=cfg.hydra_distillation_regularization,
+            hydra_self_distillation=cfg.hydra_self_distillation,
         )
 
-        if cfg.medusa_lr_multiplier != 1:
-            LOG.info(f"Using Medusa LR multiplier {cfg.medusa_lr_multiplier}")
+        if cfg.hydra_lr_multiplier != 1:
+            LOG.info(f"Using Hydra LR multiplier {cfg.hydra_lr_multiplier}")
             replace_create_optimizer(
-                medusa_lr_multiplier=cfg.medusa_lr_multiplier,
+                hydra_lr_multiplier=cfg.hydra_lr_multiplier,
             )
 
         if cfg.adapter in ["lora", "qlora"]:
-            # Add medusa heads to cfg.lora_modules_to_save
+            # Add hydra heads to cfg.lora_modules_to_save
             if cfg.lora_modules_to_save is None:
                 cfg.lora_modules_to_save = []
-            for i in range(cfg.medusa_num_heads):
-                cfg.lora_modules_to_save.append(f"medusa_head.{i}")
-            # for name, module in model.medusa_head.named_modules():
+            for i in range(cfg.hydra_num_heads):
+                cfg.lora_modules_to_save.append(f"hydra_head.{i}")
+            # for name, module in model.hydra_head.named_modules():
             #     if isinstance(module, torch.nn.Linear):
-            #         cfg.lora_modules_to_save.append(f"medusa_head.{name}")
+            #         cfg.lora_modules_to_save.append(f"hydra_head.{name}")
             # cfg.lora_modules_to_save.append("lm_head")
 
     model, lora_config = load_adapter(model, cfg, cfg.adapter)
 
-    if cfg.medusa_num_heads is not None and (
-        cfg.medusa_only_heads or cfg.medusa_num_unfreeze_layers > 0
+    if cfg.hydra_num_heads is not None and (
+        cfg.hydra_only_heads or cfg.hydra_num_unfreeze_layers > 0
     ):
         LOG.info("Freeze layers!")
         for param in model.parameters():
             param.requires_grad = False
-        # Leave the last medusa_num_unfreeze_layers layers trainable
-        if cfg.medusa_num_unfreeze_layers > 0:
-            for layer in model.model.layers[-cfg.medusa_num_unfreeze_layers :]:
+        # Leave the last hydra_num_unfreeze_layers layers trainable
+        if cfg.hydra_num_unfreeze_layers > 0:
+            for layer in model.model.layers[-cfg.hydra_num_unfreeze_layers :]:
                 LOG.info(f"Unfreezing layer {layer}")
                 for param in layer.parameters():
                     param.requires_grad = True
-            # Leave the last medusa_num_unfreeze_layers layers trainable to ensure the gradient can pass through
+            # Leave the last hydra_num_unfreeze_layers layers trainable to ensure the gradient can pass through
             for param in model.model.norm.parameters():
                 param.requires_grad = True
 
-        for param in model.medusa_head.parameters():
+        for param in model.hydra_head.parameters():
             param.requires_grad = True
 
-        if not cfg.medusa_only_heads:
+        if not cfg.hydra_only_heads:
             for param in model.lm_head.parameters():
                 param.requires_grad = True
 

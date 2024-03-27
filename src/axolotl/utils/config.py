@@ -122,21 +122,23 @@ def normalize_config(cfg):
         or (cfg.model_type and "mistral" in cfg.model_type.lower())
     )
 
-    if cfg.medusa_num_heads is not None:
-        cfg.medusa_num_layers = cfg.medusa_num_layers if cfg.medusa_num_layers is not None else 0
-        cfg.medusa_heads_coefficient = cfg.medusa_heads_coefficient if cfg.medusa_heads_coefficient is not None else 0.1
-        cfg.medusa_decay_coefficient = cfg.medusa_decay_coefficient if cfg.medusa_decay_coefficient is not None else 1.0
-        cfg.medusa_logging = cfg.medusa_logging if cfg.medusa_logging is not None else False
-        cfg.medusa_scheduler = cfg.medusa_scheduler if cfg.medusa_scheduler is not None else "sine"
-        cfg.medusa_only_heads = cfg.medusa_only_heads if cfg.medusa_only_heads is not None else False
-        cfg.medusa_num_unfreeze_layers = cfg.medusa_num_unfreeze_layers if cfg.medusa_num_unfreeze_layers is not None else 0
-        if cfg.medusa_num_unfreeze_layers > 0:
-            assert cfg.gradient_checkpointing is not True, "gradient_checkpointing is not supported with medusa_num_unfreeze_layers > 0"
-        cfg.medusa_lr_multiplier = cfg.medusa_lr_multiplier if cfg.medusa_lr_multiplier is not None else 1.0
-        cfg.medusa_distillation_regularization = cfg.medusa_distillation_regularization if cfg.medusa_distillation_regularization is not None else 0.0
-        cfg.medusa_self_distillation = cfg.medusa_self_distillation if cfg.medusa_self_distillation is not None else False
-        if cfg.medusa_self_distillation:
-            assert cfg.adapter is not None, "adapter is required for medusa_self_distillation"
+    if cfg.hydra_num_heads is not None:
+        cfg.hydra_num_layers = cfg.hydra_num_layers if cfg.hydra_num_layers is not None else 0
+        cfg.hydra_heads_coefficient = cfg.hydra_heads_coefficient if cfg.hydra_heads_coefficient is not None else 0.1
+        cfg.hydra_decay_coefficient = cfg.hydra_decay_coefficient if cfg.hydra_decay_coefficient is not None else 1.0
+        cfg.hydra_logging = cfg.hydra_logging if cfg.hydra_logging is not None else False
+        cfg.hydra_scheduler = cfg.hydra_scheduler if cfg.hydra_scheduler is not None else "sine"
+        cfg.hydra_only_heads = cfg.hydra_only_heads if cfg.hydra_only_heads is not None else False
+        cfg.hydra_num_unfreeze_layers = cfg.hydra_num_unfreeze_layers if cfg.hydra_num_unfreeze_layers is not None else 0
+        if cfg.hydra_num_unfreeze_layers > 0:
+            assert cfg.gradient_checkpointing is not True, "gradient_checkpointing is not supported with hydra_num_unfreeze_layers > 0"
+        cfg.hydra_lr_multiplier = cfg.hydra_lr_multiplier if cfg.hydra_lr_multiplier is not None else 1.0
+        cfg.hydra_distillation_regularization = cfg.hydra_distillation_regularization if cfg.hydra_distillation_regularization is not None else 0.0
+        cfg.hydra_self_distillation = cfg.hydra_self_distillation if cfg.hydra_self_distillation is not None else False
+        if cfg.hydra_self_distillation:
+            assert cfg.adapter is not None, "adapter is required for hydra_self_distillation"
+        cfg.grounded_heads = cfg.grounded_heads if cfg.grounded_heads is not None else True
+        cfg.hydra_head_arch = cfg.hydra_head_arch if cfg.hydra_head_arch is not None else "mlp"
         
     if isinstance(cfg.learning_rate, str):
         cfg.learning_rate = float(cfg.learning_rate)
@@ -379,7 +381,7 @@ def validate_config(cfg):
             "eval_table_size and eval_sample_packing are not supported together with sample_packing. Please set 'eval_sample_packing' to false."
         )
 
-    if not cfg.adapter and not cfg.medusa_only_heads and (cfg.load_in_8bit or cfg.load_in_4bit):
+    if not cfg.adapter and not cfg.hydra_only_heads and (cfg.load_in_8bit or cfg.load_in_4bit):
         raise ValueError(
             "load_in_8bit and load_in_4bit are not supported without setting an adapter."
             "If you want to full finetune, please turn off load_in_8bit and load_in_4bit."

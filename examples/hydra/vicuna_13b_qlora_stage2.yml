@@ -1,5 +1,5 @@
-base_model: lmsys/vicuna-7b-v1.5
-base_model_config: lmsys/vicuna-7b-v1.5
+base_model: lmsys/vicuna-13b-v1.5
+base_model_config: lmsys/vicuna-13b-v1.5
 model_type: LlamaForCausalLM
 tokenizer_type: LlamaTokenizer
 is_llama_derived_model: true
@@ -11,9 +11,9 @@ strict: false
 datasets:
   - path: ShareGPT_Vicuna_unfiltered/ShareGPT_V4.3_unfiltered_cleaned_split.json
     type: sharegpt
-dataset_prepared_path: /tmp/prepared-data
+dataset_prepared_path:
 val_set_size: 0.01
-output_dir: ./vicuna_7b_qlora_stage1
+output_dir: ./vicuna_13b_qlora_stage2
 
 adapter: qlora
 lora_model_dir:
@@ -33,12 +33,13 @@ lora_target_modules:
 lora_target_linear: 
 lora_fan_in_fan_out:
 lora_modules_to_save:
+lora_model_dir: ./vicuna_13b_qlora_stage1
 
 sequence_len: 4096
 sample_packing: true
 pad_to_sequence_len: true
 
-wandb_project: medusa_test
+wandb_project:
 wandb_entity:
 wandb_watch:
 wandb_run_id:
@@ -86,7 +87,7 @@ medusa_decay_coefficient: 0.8
 medusa_logging: true
 medusa_scheduler: constant
 medusa_lr_multiplier: 4.0
-medusa_only_heads: true
-ddp_find_unused_parameters: true
+# medusa_only_heads: true
+# ddp_find_unused_parameters: true
 # Stage 1: only train the medusa heads
 # Stage 2: train the whole model

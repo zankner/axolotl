@@ -1,5 +1,5 @@
-base_model: lmsys/vicuna-7b-v1.5
-base_model_config: lmsys/vicuna-7b-v1.5
+base_model: lmsys/vicuna-13b-v1.5
+base_model_config: lmsys/vicuna-13b-v1.5
 model_type: LlamaForCausalLM
 tokenizer_type: LlamaTokenizer
 is_llama_derived_model: true
@@ -11,9 +11,9 @@ strict: false
 datasets:
   - path: ShareGPT_Vicuna_unfiltered/ShareGPT_V4.3_unfiltered_cleaned_split.json
     type: sharegpt
-dataset_prepared_path: /tmp/prepared-data
+dataset_prepared_path:
 val_set_size: 0.01
-output_dir: ./vicuna_7b_qlora_stage1
+output_dir: ./vicuna_13b_qlora_stage1
 
 adapter: qlora
 lora_model_dir:
@@ -38,7 +38,7 @@ sequence_len: 4096
 sample_packing: true
 pad_to_sequence_len: true
 
-wandb_project: medusa_test
+wandb_project: 
 wandb_entity:
 wandb_watch:
 wandb_run_id:
