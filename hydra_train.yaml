@@ -7,11 +7,6 @@ scheduling:
   resumable: false
   priority: medium
 integrations:
-- integration_type: git_repo
-  git_branch: main
-  git_repo: zankner/axolotl
-  pip_install: .[flash-attn,deepspeed]
-  ssh_clone: true
 - integration_type: wandb
   entity: mosaic-ml
   project: colm-hydra-decoding
@@ -26,20 +21,22 @@ command: 'source /secrets/secrets.env
 
   export AWS_PROFILE=data-force-one
 
+  git clone git@github.com:zankner/axolotl.git
+
   cd axolotl
+
+  pip install -e ".[flash-attn,deepspeed]"
 
   git lfs install
 
   git clone https://huggingface.co/datasets/Aeala/ShareGPT_Vicuna_unfiltered
 
-  accelerate launch -m axolotl.cli.train examples/hydra/colm/{STAGE_1_NAME}
+  accelerate launch -m axolotl.cli.train examples/hydra/colm/{STAGE_1_NAME}.yml
 
-  accelerate launch -m axolotl.cli.train examples/hydra/colm/{STAGE_2_NAME}
+  accelerate launch -m axolotl.cli.train examples/hydra/colm/{STAGE_2_NAME}.yml
 
-  python -m axolotl.cli.merge_lora examples/hydra/colm/{STAGE_1_NAME}
+  python -m axolotl.cli.merge_lora examples/hydra/colm/{STAGE_2_NAME}.yml --lora_model_dir=ckpts/{STAGE_2_NAME}
 
-  python -m axolotl.cli.merge_lora examples/hydra/colm/{STAGE_2_NAME}
-
-  oci os object bulk-upload -bn mosaicml-internal-checkpoints --src-dir ckpts --prefix zack/colm-hydra-decoding
+  oci os object bulk-upload -bn mosaicml-internal-checkpoints --src-dir ckpts/{STAGE_2_NAME}/merged --prefix zack/colm-hydra-decoding/{STAGE_2_NAME}/
   
 '

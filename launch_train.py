@@ -20,8 +20,8 @@ if __name__ == "__main__":
     if args.preemptible:
         run.scheduling["resumable"] = True
     
-    stage_1_yaml_name = f"{'hydra' if args.grounded else 'medusa'}_vicuna_{args.size}_qlora_stage1_sd_{args.seed}.yml"
-    stage_2_yaml_name = f"{'hydra' if args.grounded else 'medusa'}_vicuna_{args.size}_qlora_stage2_sd_{args.seed}.yml"
+    stage_1_yaml_name = f"{'hydra' if args.grounded else 'medusa'}_vicuna_{args.size}_qlora_stage1_sd_{args.seed}"
+    stage_2_yaml_name = f"{'hydra' if args.grounded else 'medusa'}_vicuna_{args.size}_qlora_stage2_sd_{args.seed}"
     
     run.command = run.command.replace("{STAGE_1_NAME}", stage_1_yaml_name)
     run.command = run.command.replace("{STAGE_2_NAME}", stage_2_yaml_name)
