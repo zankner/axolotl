@@ -547,9 +547,6 @@ def load_model(
             grounded_heads=cfg.grounded_heads
         )
 
-        # print(model)
-        # import sys; sys.exit()
-
         replace_compute_loss(
             hydra_heads_coefficient=cfg.hydra_heads_coefficient,
             hydra_decay_coefficient=cfg.hydra_decay_coefficient,
@@ -570,8 +567,9 @@ def load_model(
             # Add hydra heads to cfg.lora_modules_to_save
             if cfg.lora_modules_to_save is None:
                 cfg.lora_modules_to_save = []
-            for i in range(cfg.hydra_num_heads):
-                cfg.lora_modules_to_save.append(f"hydra_head.{i}")
+            cfg.lora_modules_to_save.append("hydra_head")
+            # for i in range(cfg.hydra_num_heads):
+            #     cfg.lora_modules_to_save.append(f"hydra_head.{i}")
             # for name, module in model.hydra_head.named_modules():
             #     if isinstance(module, torch.nn.Linear):
             #         cfg.lora_modules_to_save.append(f"hydra_head.{name}")
