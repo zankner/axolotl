@@ -43,7 +43,8 @@ pad_to_sequence_len: true
 wandb_project: colm-hydra-decoding
 wandb_entity:
 wandb_watch:
-wandb_run_id: hydra_vicuna_7b_qlora_stage2_sd_17
+wandb_run_id:
+wandb_name: hydra_vicuna_7b_qlora_stage2_sd_17
 wandb_log_model:
 
 gradient_accumulation_steps: 4
