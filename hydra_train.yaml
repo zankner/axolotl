@@ -31,11 +31,11 @@ command: 'source /secrets/secrets.env
 
   git clone https://huggingface.co/datasets/Aeala/ShareGPT_Vicuna_unfiltered
 
-  accelerate launch -m axolotl.cli.train examples/hydra/colm/{STAGE_1_NAME}.yml
+  accelerate launch -m axolotl.cli.train examples/hydra/colm/{MODEL_SIZE}/{STAGE_1_NAME}.yml
 
-  accelerate launch -m axolotl.cli.train examples/hydra/colm/{STAGE_2_NAME}.yml
+  accelerate launch -m axolotl.cli.train examples/hydra/colm/{MODEL_SIZE}/{STAGE_2_NAME}.yml
 
-  python -m axolotl.cli.merge_lora examples/hydra/colm/{STAGE_2_NAME}.yml --lora_model_dir=ckpts/{STAGE_2_NAME}
+  python -m axolotl.cli.merge_lora examples/hydra/colm/{MODEL_SIZE}/{STAGE_2_NAME}.yml --lora_model_dir=ckpts/{STAGE_2_NAME}
 
   oci os object bulk-upload -bn mosaicml-internal-checkpoints --src-dir ckpts/{STAGE_2_NAME}/merged --prefix zack/colm-hydra-decoding/{STAGE_2_NAME}/
   

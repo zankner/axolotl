@@ -25,6 +25,7 @@ if __name__ == "__main__":
     
     run.command = run.command.replace("{STAGE_1_NAME}", stage_1_yaml_name)
     run.command = run.command.replace("{STAGE_2_NAME}", stage_2_yaml_name)
+    run.command = run.command.replace("{MODEL_SIZE}", args.size)
 
     if args.debug:
         with open("debug.yaml", "w") as f:
