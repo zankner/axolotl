@@ -86,7 +86,7 @@ grounded_heads: true
 hydra_head_arch: mlp
 hydra_num_heads: 5
 hydra_num_layers: 1
-hydra_heads_coefficient: 1.0
+hydra_heads_coefficient: 0.2
 hydra_decay_coefficient: 0.8
 hydra_logging: true
 hydra_scheduler: constant
