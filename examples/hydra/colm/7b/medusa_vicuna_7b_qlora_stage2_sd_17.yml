@@ -1,5 +1,5 @@
-base_model: lmsys/vicuna-7b-v1.3
-base_model_config: lmsys/vicuna-7b-v1.3
+base_model: lmsys/vicuna-7b-v1.5
+base_model_config: lmsys/vicuna-7b-v1.5
 model_type: LlamaForCausalLM
 tokenizer_type: LlamaTokenizer
 is_llama_derived_model: true
@@ -36,7 +36,7 @@ lora_fan_in_fan_out:
 lora_modules_to_save:
 lora_model_dir: ./ckpts/medusa_vicuna_7b_qlora_stage1_sd_17
 
-sequence_len: 2048
+sequence_len: 4096
 sample_packing: true
 pad_to_sequence_len: true
 
