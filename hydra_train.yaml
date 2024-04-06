@@ -39,7 +39,7 @@ command: 'source /secrets/secrets.env
 
   python -m axolotl.cli.merge_lora examples/hydra/colm/{MODEL_SIZE}/{STAGE_2_NAME}.yml --lora_model_dir=ckpts/{STAGE_2_NAME}
 
-  oci os object bulk-upload -bn mosaicml-internal-checkpoints --src-dir ckpts/{STAGE_1_NAME}/merged --prefix zack/colm-hydra-decoding/{STAGE_2_NAME}/
+  oci os object bulk-upload -bn mosaicml-internal-checkpoints --src-dir ckpts/{STAGE_1_NAME}/merged --prefix zack/colm-hydra-decoding/{STAGE_1_NAME}/
 
   oci os object bulk-upload -bn mosaicml-internal-checkpoints --src-dir ckpts/{STAGE_2_NAME}/merged --prefix zack/colm-hydra-decoding/{STAGE_2_NAME}/
   
