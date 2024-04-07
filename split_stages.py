@@ -15,10 +15,10 @@ if __name__ == "__main__":
 
     # Split the dictionary at the 'stage1' key
     stage1_data = data['stage_1']
-    with open('stage_1.yaml', 'w') as file:
+    with open('stage_1.yml', 'w') as file:
         yaml.dump(stage1_data, file)
 
     # Split the dictionary at the 'stage2' key
     stage2_data = data['stage_2']
-    with open('stage_2.yaml', 'w') as file:
+    with open('stage_2.yml', 'w') as file:
         yaml.dump(stage2_data, file)
