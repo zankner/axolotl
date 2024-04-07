@@ -27,20 +27,220 @@ command: 'source /secrets/secrets.env
 
   pip install -e ".[flash-attn,deepspeed]"
 
+  python split_stages.py --params-path /mnt/config/parameters.yaml
+
   git lfs install
 
   git clone https://huggingface.co/datasets/Aeala/ShareGPT_Vicuna_unfiltered
 
-  accelerate launch -m axolotl.cli.train examples/hydra/colm/{MODEL_SIZE}/{STAGE_1_NAME}.yml
+  accelerate launch -m axolotl.cli.train stage_1.yml
 
-  accelerate launch -m axolotl.cli.train examples/hydra/colm/{MODEL_SIZE}/{STAGE_2_NAME}.yml
+  accelerate launch -m axolotl.cli.train stage_2.yml
 
-  python -m axolotl.cli.merge_lora examples/hydra/colm/{MODEL_SIZE}/{STAGE_1_NAME}.yml --lora_model_dir=ckpts/{STAGE_1_NAME}
+  python -m axolotl.cli.merge_lora stage_1.yml --lora_model_dir=ckpts/stage1
 
-  python -m axolotl.cli.merge_lora examples/hydra/colm/{MODEL_SIZE}/{STAGE_2_NAME}.yml --lora_model_dir=ckpts/{STAGE_2_NAME}
+  python -m axolotl.cli.merge_lora stage_2.yml --lora_model_dir=ckpts/stage2
 
-  oci os object bulk-upload -bn mosaicml-internal-checkpoints --src-dir ckpts/{STAGE_1_NAME}/merged --prefix zack/colm-hydra-decoding/{STAGE_1_NAME}/
+  oci os object bulk-upload -bn mosaicml-internal-checkpoints --src-dir ckpts/stage1/merged --prefix zack/colm-hydra-decoding/{STAGE_1_NAME}/
 
-  oci os object bulk-upload -bn mosaicml-internal-checkpoints --src-dir ckpts/{STAGE_2_NAME}/merged --prefix zack/colm-hydra-decoding/{STAGE_2_NAME}/
+  oci os object bulk-upload -bn mosaicml-internal-checkpoints --src-dir ckpts/stage2/merged --prefix zack/colm-hydra-decoding/{STAGE_2_NAME}/
   
 '
+
+parameters:
+  stage_1:
+    base_model: lmsys/vicuna-7b-v1.5
+    base_model_config: lmsys/vicuna-7b-v1.5
+    model_type: LlamaForCausalLM
+    tokenizer_type: LlamaTokenizer
+    is_llama_derived_model: true
+
+    seed: # Set in script 
+
+    load_in_8bit: false
+    load_in_4bit: true
+    strict: false
+
+    datasets:
+      - path: ShareGPT_Vicuna_unfiltered/ShareGPT_V4.3_unfiltered_cleaned_split.json
+        type: sharegpt
+    dataset_prepared_path: /tmp/prepared-data
+    val_set_size: 0.01
+    output_dir: ./ckpts/stage1
+
+    adapter: qlora
+    lora_model_dir:
+
+    lora_r: 32
+    lora_alpha: 16
+    lora_dropout: 0.05
+    lora_target_modules: 
+      - gate_proj
+      - down_proj
+      - up_proj
+      - q_proj
+      - v_proj
+      - k_proj
+      - o_proj
+      - lm_head
+    lora_target_linear: 
+    lora_fan_in_fan_out:
+    lora_modules_to_save:
+
+    sequence_len: 4096
+    sample_packing: true
+    pad_to_sequence_len: true
+
+    wandb_project: colm-hydra-decoding
+    wandb_entity:
+    wandb_watch:
+    wandb_run_id:
+    wandb_name: # Set in script
+    wandb_log_model:
+
+    gradient_accumulation_steps: # Set in script
+    micro_batch_size: # Set in script
+    num_epochs: 2
+    optimizer: adamw_bnb_8bit
+    lr_scheduler: cosine
+    learning_rate: 0.0005
+
+    train_on_inputs: false
+    group_by_length: false
+    bf16: true
+    fp16: false
+    tf32: false
+
+    gradient_checkpointing: true
+    early_stopping_patience:
+    resume_from_checkpoint:
+    local_rank:
+    logging_steps: 1
+    xformers_attention:
+    flash_attention: true
+
+    warmup_steps: 40
+    eval_steps: 40
+    save_steps:
+    save_total_limit: 1
+    debug:
+    deepspeed:
+    weight_decay: 0.0
+    fsdp:
+    fsdp_config:
+    special_tokens:
+      bos_token: "<s>"
+      eos_token: "</s>"
+      unk_token: "<unk>"
+
+    grounded_heads: # Set in script
+    hydra_head_arch: # Set in script
+    hydra_num_heads: # Set in script
+    hydra_num_layers: 1
+    hydra_heads_coefficient: 0.2
+    hydra_decay_coefficient: 0.8
+    hydra_logging: true
+    hydra_scheduler: constant
+    hydra_lr_multiplier: 4.0
+    hydra_only_heads: true
+    ddp_find_unused_parameters: true
+    # Stage 1: only train the hydra heads
+    # Stage 2: train the whole model
+  stage_2:
+    base_model: lmsys/vicuna-7b-v1.5
+    base_model_config: lmsys/vicuna-7b-v1.5
+    model_type: LlamaForCausalLM
+    tokenizer_type: LlamaTokenizer
+    is_llama_derived_model: true
+
+    seed: # Set in script 
+
+    load_in_8bit: false
+    load_in_4bit: true
+    strict: false
+
+    datasets:
+      - path: ShareGPT_Vicuna_unfiltered/ShareGPT_V4.3_unfiltered_cleaned_split.json
+        type: sharegpt
+    dataset_prepared_path: /tmp/prepared-data
+    val_set_size: 0.01
+    output_dir: ./ckpts/stage2
+
+    adapter: qlora
+    lora_model_dir: ./ckpts/stage1
+
+    lora_r: 32
+    lora_alpha: 16
+    lora_dropout: 0.05
+    lora_target_modules: 
+      - gate_proj
+      - down_proj
+      - up_proj
+      - q_proj
+      - v_proj
+      - k_proj
+      - o_proj
+      - lm_head
+    lora_target_linear: 
+    lora_fan_in_fan_out:
+    lora_modules_to_save:
+
+    sequence_len: 4096
+    sample_packing: true
+    pad_to_sequence_len: true
+
+    wandb_project: colm-hydra-decoding
+    wandb_entity:
+    wandb_watch:
+    wandb_run_id:
+    wandb_name: # Set in script
+    wandb_log_model:
+
+    gradient_accumulation_steps: # Set in script
+    micro_batch_size: # Set in script
+    num_epochs: 2
+    optimizer: adamw_bnb_8bit
+    lr_scheduler: cosine
+    learning_rate: 0.0005
+
+    train_on_inputs: false
+    group_by_length: false
+    bf16: true
+    fp16: false
+    tf32: false
+
+    gradient_checkpointing: true
+    early_stopping_patience:
+    resume_from_checkpoint:
+    local_rank:
+    logging_steps: 1
+    xformers_attention:
+    flash_attention: true
+
+    warmup_steps: 40
+    eval_steps: 40
+    save_steps:
+    save_total_limit: 1
+    debug:
+    deepspeed:
+    weight_decay: 0.0
+    fsdp:
+    fsdp_config:
+    special_tokens:
+      bos_token: "<s>"
+      eos_token: "</s>"
+      unk_token: "<unk>"
+
+    grounded_heads: # Set in script
+    hydra_head_arch: # Set in script
+    hydra_num_heads: # Set in script
+    hydra_num_layers: 1
+    hydra_heads_coefficient: 0.2
+    hydra_decay_coefficient: 0.8
+    hydra_logging: true
+    hydra_scheduler: constant
+    hydra_lr_multiplier: 4.0
+    hydra_only_heads: false
+    ddp_find_unused_parameters: true
+    # Stage 1: only train the hydra heads
+    # Stage 2: train the whole model
