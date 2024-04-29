@@ -41,10 +41,10 @@ command: 'source /secrets/secrets.env
 
   python -m axolotl.cli.merge_lora stage_2.yml --lora_model_dir=ckpts/stage2
 
-  oci os object bulk-upload -bn mosaicml-internal-checkpoints --src-dir ckpts/stage1/merged --prefix zack/colm-hydra-decoding/{STAGE_1_NAME}/
+  huggingface-cli upload ankner/{STAGE_1_NAME} ckpts/stage1/merged . --private --token $HUGGING_FACE_HUB_TOKEN
 
-  oci os object bulk-upload -bn mosaicml-internal-checkpoints --src-dir ckpts/stage2/merged --prefix zack/colm-hydra-decoding/{STAGE_2_NAME}/
-  
+  huggingface-cli upload ankner/{STAGE_2_NAME} ckpts/stage2/merged . --private --token $HUGGING_FACE_HUB_TOKEN
+
 '
 
 parameters:
@@ -137,11 +137,11 @@ parameters:
     hydra_head_arch: # Set in script
     hydra_num_heads: # Set in script
     hydra_num_layers: 1
-    hydra_heads_coefficient: 0.2
-    hydra_decay_coefficient: 0.8
+    hydra_heads_coefficient: 1.0
+    hydra_decay_coefficient: 0.65
     hydra_logging: true
     hydra_scheduler: constant
-    hydra_lr_multiplier: 4.0
+    hydra_lr_multiplier: 1.0
     hydra_only_heads: true
     ddp_find_unused_parameters: true
     # Stage 1: only train the hydra heads
@@ -235,11 +235,12 @@ parameters:
     hydra_head_arch: # Set in script
     hydra_num_heads: # Set in script
     hydra_num_layers: 1
-    hydra_heads_coefficient: 0.2
-    hydra_decay_coefficient: 0.8
+    hydra_heads_coefficient: 0.05
+    hydra_decay_coefficient: 0.65
     hydra_logging: true
     hydra_scheduler: constant
-    hydra_lr_multiplier: 4.0
+    hydra_lr_multiplier: 1.0
+    # hydra_lr_multiplier: 4.0
     # hydra_only_heads: false
     # ddp_find_unused_parameters: true
     # Stage 1: only train the hydra heads
