@@ -142,7 +142,8 @@ parameters:
     hydra_logging: true
     hydra_scheduler: constant
     hydra_lr_multiplier: 1.0
-    hydra_only_heads: true
+    hydra_self_distillation: true
+    hydra_only_heads: # Set in script
     ddp_find_unused_parameters: true
     # Stage 1: only train the hydra heads
     # Stage 2: train the whole model
@@ -240,6 +241,7 @@ parameters:
     hydra_logging: true
     hydra_scheduler: constant
     hydra_lr_multiplier: 1.0
+    hydra_self_distillation: # Set in script
     # hydra_lr_multiplier: 4.0
     # hydra_only_heads: false
     # ddp_find_unused_parameters: true

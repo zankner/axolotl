@@ -10,8 +10,7 @@ if __name__ == "__main__":
     parser.add_argument("--cluster", type=str, default="r1z1")
     parser.add_argument("--head-arch", type=str, required=True)
     parser.add_argument("--num-heads", type=int, default=5)
-    parser.add_argument("--lm-weight", type=float, default=1.0)
-    parser.add_argument("--kd-weight", type=float, default=0.0)
+    parser.add_argument("--self-distill", action="store_true")
     parser.add_argument("--seeds", nargs="+", type=int, required=True)
     parser.add_argument("--preemptible", action="store_true")
     parser.add_argument("--device-batch-size", type=int, required=True)
@@ -32,7 +31,7 @@ if __name__ == "__main__":
             run.scheduling["resumable"] = True
     
         # Build the run name
-        base_run_name = f"{'hydra' if args.grounded else 'medusa'}_vicuna_{args.size}_{args.head_arch}_nh_{args.num_heads}_lmw_{args.lm_weight}_kdw_{args.kd_weight}"
+        base_run_name = f"{'hydra' if args.grounded else 'medusa'}_vicuna_{args.size}_{args.head_arch}_nh_{args.num_heads}{'_self_distill' if args.self_distill else ''}"
         if args.base_run_name:
             base_run_name = args.base_run_name
         stage_1_name = f"{base_run_name}_stage1_sd_{seed}"
@@ -64,6 +63,9 @@ if __name__ == "__main__":
 
         run.parameters["stage_1"]["hydra_num_heads"] = args.num_heads
         run.parameters["stage_2"]["hydra_num_heads"] = args.num_heads
+
+        run.parameters["stage_1"]["hydra_self_distillation"] = args.hydra_self_distillation
+        run.parameters["stage_2"]["hydra_self_distillation"] = args.hydra_self_distillation
 
         if args.debug:
             with open("debug.yaml", "w") as f:

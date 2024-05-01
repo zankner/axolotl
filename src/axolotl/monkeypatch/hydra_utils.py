@@ -244,30 +244,30 @@ def replace_compute_loss(
             hydra_logits = hydra_logits.view(-1, logits.shape[-1])
             hydra_labels = hydra_labels.view(-1)
             hydra_labels = hydra_labels.to(hydra_logits.device)
-            if i == 0:
-                if hydra_self_distillation:
-                    original_logits = original_logits[:, :-1].contiguous().view(-1, original_logits.shape[-1])
-                    mask = hydra_labels.ne(IGNORE_TOKEN_ID)
-                    soft_labels = F.softmax(original_logits[mask], dim=-1)
-                    loss_i = F.kl_div(
-                        F.log_softmax(hydra_logits[mask], dim=-1),
-                        soft_labels,
-                        reduction="sum",
-                    ) / hydra_logits.shape[0]
-                elif hydra_distillation_regularization > 0:
-                    # use soft labels
-                    mask = hydra_labels.ne(IGNORE_TOKEN_ID)
-                    soft_labels = F.softmax(hydra_logits[mask], dim=-1) * hydra_distillation_regularization + \
-                        F.one_hot(hydra_labels[mask], num_classes=hydra_logits.shape[-1]) * (1 - hydra_distillation_regularization)
-                    loss_i = F.kl_div(
-                        F.log_softmax(hydra_logits[mask], dim=-1),
-                        soft_labels,
-                        reduction="sum",
-                    ) / hydra_logits.shape[0]
-                else:
-                    loss_i = loss_fct(hydra_logits, hydra_labels)
+            # if i == 0:
+            if hydra_self_distillation:
+                for_hydra_original_logits = original_logits[:, :-(1 + i)].contiguous().view(-1, original_logits.shape[-1])
+                mask = hydra_labels.ne(IGNORE_TOKEN_ID)
+                soft_labels = F.softmax(for_hydra_original_logits[mask], dim=-1)
+                loss_i = F.kl_div(
+                    F.log_softmax(hydra_logits[mask], dim=-1),
+                    soft_labels,
+                    reduction="sum",
+                ) / hydra_logits.shape[0]
+            elif hydra_distillation_regularization > 0:
+                # use soft labels
+                mask = hydra_labels.ne(IGNORE_TOKEN_ID)
+                soft_labels = F.softmax(hydra_logits[mask], dim=-1) * hydra_distillation_regularization + \
+                    F.one_hot(hydra_labels[mask], num_classes=hydra_logits.shape[-1]) * (1 - hydra_distillation_regularization)
+                loss_i = F.kl_div(
+                    F.log_softmax(hydra_logits[mask], dim=-1),
+                    soft_labels,
+                    reduction="sum",
+                ) / hydra_logits.shape[0]
             else:
                 loss_i = loss_fct(hydra_logits, hydra_labels)
+            # else:
+            #     loss_i = loss_fct(hydra_logits, hydra_labels)
             # Compute the coefficient for hydra losses
             if hydra_scheduler == "sine":
                 hydra_scheduler_coefficient = math.sin(
