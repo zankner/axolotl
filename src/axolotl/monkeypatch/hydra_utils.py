@@ -21,7 +21,8 @@ import math
 import wandb
 import transformers
 
-from axolotl.monkeypatch.hydra_heads import HydraMLP, HydraPrefixMLP
+from axolotl.monkeypatch.hydra_heads.mlp_head import HydraMLP
+from axolotl.monkeypatch.hydra_heads.prefix_mlp_head import HydraPrefixMLP
 
 logger = LOG = logging.getLogger("axolotl.monkeypatch.hydra")
 
