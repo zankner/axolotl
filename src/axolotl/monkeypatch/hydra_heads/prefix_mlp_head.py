@@ -1,7 +1,8 @@
+from copy import deepcopy
+
 import torch
 import torch.nn as nn
-
-# from transformers.models
+from transformers import LlamaModel
 
 class ResBlock(nn.Module):
     """
@@ -39,7 +40,7 @@ class ResBlock(nn.Module):
         """
         return self.res_connection(x) + self.act(self.linear(x))
 
-class HydraMLP(nn.Module):
+class HydraPrefixMLP(nn.Module):
     """
     A MLP module as the Hydra head.
 
@@ -62,6 +63,14 @@ class HydraMLP(nn.Module):
         self.hidden_size = base_config.hidden_size
         self.vocab_size = base_config.vocab_size
         
+        prefix_config = deepcopy(base_config)
+        prefix_config.num_hidden_layers = 1
+
+        if base_config.model_type == "llama":
+            self.prefix_embeding_layer = LlamaModel(prefix_config)
+        else:
+            raise NotImplementedError(f"Model type {base_config.model_type} not supported for prefix embeddings.")
+
         self.hydra_num_layers = hydra_num_layers
         self.hydra_num_heads = hydra_num_heads
         self.grounded_heads = grounded_heads
@@ -84,15 +93,15 @@ class HydraMLP(nn.Module):
             ])
         
         self.hydra_lm_head = nn.ModuleList([
-            nn.Linear(self.hidden_size, self.vocab_size) for _ in range(self.hydra_num_heads)
+            nn.Sequential(nn.Linear(self.hidden_size, self.vocab_size)) for _ in range(self.hydra_num_heads)
         ])
         if lm_head_init_weight is not None:
             print("Initializing HydraLM head with pretrained weights...")
             for i in range(hydra_num_heads):
             # Initialize the weights of each hydra_head using the base model's weights
-                self.hydra_lm_head[i].weight.data[:] = lm_head_init_weight[:]
+                self.hydra_lm_head[i][1].weight.data[:] = lm_head_init_weight[:]
 
-    def forward(self, base_hidden_states, input_ids=None, noise=None):
+    def forward(self, base_hidden_states, input_ids, attention_mask=None, past_key_values=None, position_ids=None, noise=None):
         """
         Forward pass of the MLP.
 
@@ -103,6 +112,12 @@ class HydraMLP(nn.Module):
             torch.Tensor: Output after the MLP.
         """
 
+        prefix_embedding = self.prefix_embeding_layer(
+            inputs_embeds=base_hidden_states,
+            attention_mask=attention_mask,
+            past_key_values=past_key_values,
+            position_ids=position_ids,
+        )[0]
         hydra_hidden_states = []
         if self.grounded_heads:
             assert input_ids is not None, "Input ids must be provided for grounded heads"
@@ -110,7 +125,7 @@ class HydraMLP(nn.Module):
                 input_embeds = self.input_embed_fn(input_ids)
             if noise is not None:
                 input_embeds = input_embeds + noise
-            hydra_inputs = [base_hidden_states]
+            hydra_inputs = [prefix_embedding]
             for i in range(self.hydra_num_heads):
                 # Move input embeddings back one spot for each hydra head idx
                 hydra_inputs.append(torch.roll(input_embeds, shifts=-(i+1), dims=1))
@@ -120,7 +135,7 @@ class HydraMLP(nn.Module):
                 hydra_hidden_states.append(self.hydra_mlp[i](head_input))
         else:
             for i in range(self.hydra_num_heads):
-                hydra_hidden_states.append(self.hydra_mlp[i](base_hidden_states))
+                hydra_hidden_states.append(self.hydra_mlp[i](prefix_embedding))
         
         hydra_logits = []
         for i in range(self.hydra_num_heads):
@@ -160,21 +175,36 @@ class HydraMLP(nn.Module):
         tree_candidates = tree_candidates.unsqueeze(0)
         return cart_candidates, tree_candidates
     
-    def _grounded_proposal(self, input_logits, base_hidden_states, hydra_buffers):
+    def _grounded_proposal(self, input_logits, base_hidden_states, attention_mask, hydra_buffers, seq_len, past_key_values):
         children_per_head = hydra_buffers["children_per_head"]
         children_to_expand_per_head = hydra_buffers["children_to_expand_per_head"]
         retrieve_indices = hydra_buffers["retrieve_indices"]
 
-        candidate_id = torch.argmax(input_logits[:, -1:], dim=-1)
+        # Build prefix through attn layer 
+        # Fixed to only one layer currently
+        past_key_values = past_key_values[-1:]
+        position_ids = torch.cumsum(attention_mask, dim=1)[:, -base_hidden_states.shape[1]:] - 1
+        prefix_embedding = self.prefix_embeding_layer(
+            inputs_embeds=base_hidden_states,
+            attention_mask=attention_mask, # Might need to change eventually
+            past_key_values=past_key_values,
+            position_ids=position_ids,
+        )[0]
+
+        bs_select = torch.arange(input_logits.shape[0])
+        num_valid_input = torch.cumsum(attention_mask[:, -base_hidden_states.shape[1]:], dim=1).max(dim=1).values - 1
+
+        candidate_id = torch.argmax(input_logits[bs_select, num_valid_input], dim=-1, keepdim=True)
         candidate_embedding = self.input_embed_fn(candidate_id)
 
         candidates = candidate_id
-        candidates_embeddings = torch.cat([base_hidden_states[:, -1:], candidate_embedding], dim=-1)
+        candidates_embeddings = torch.cat([prefix_embedding[bs_select, num_valid_input][:, None], candidate_embedding], dim=-1)
 
         for head_idx, (head_num_children, head_children_to_expand) in enumerate(zip(children_per_head, children_to_expand_per_head)):
             hydra_hidden_state = self.hydra_mlp[head_idx](candidates_embeddings)
             hydra_preds = self.hydra_lm_head[head_idx](hydra_hidden_state)
             next_head_embeddings = []
+
             for path_idx, (num_children, children_to_expand) in enumerate(zip(head_num_children, head_children_to_expand)):
 
                 hydra_candidates = torch.topk(hydra_preds[:, path_idx], num_children, dim=-1).indices
@@ -192,6 +222,7 @@ class HydraMLP(nn.Module):
 
         # TODO (Zack): Only selecting first batch element for now, change when doing bs > 1
         cart_candidates = candidates[:, retrieve_indices]
+
         return cart_candidates, candidates
     
     def proposal(
@@ -200,11 +231,11 @@ class HydraMLP(nn.Module):
             base_hidden_states,
             attention_mask,
             hydra_buffers,
-            seq_len=None,
-            past_key_values=None, # Not actually used but consistent with other proposal functions,
-            input_ids = None
+            seq_len,
+            past_key_values=None, # Not actually used but consistent with other proposal functions
+            input_ids=None,
         ):
         if self.grounded_heads:
-            return self._grounded_proposal(input_logits, base_hidden_states, hydra_buffers)
+            return self._grounded_proposal(input_logits, base_hidden_states, attention_mask, hydra_buffers, seq_len, past_key_values)
         else:
             return self._ungrounded_proposal(input_logits, base_hidden_states, hydra_buffers)

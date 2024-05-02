@@ -21,7 +21,7 @@ import math
 import wandb
 import transformers
 
-from axolotl.monkeypatch.hydra_heads.mlp_head import HydraMLP
+from axolotl.monkeypatch.hydra_heads import HydraMLP, HydraPrefixMLP
 
 logger = LOG = logging.getLogger("axolotl.monkeypatch.hydra")
 
@@ -103,6 +103,15 @@ def add_hydra_heads(
 
     if hydra_head_arch == "mlp":
         self.hydra_head = HydraMLP(
+            hydra_num_layers=hydra_num_layers,
+            hydra_num_heads=hydra_num_heads,
+            grounded_heads=grounded_heads,
+            input_embed_fn=self.model.embed_tokens.forward,
+            base_config=self.config,
+            lm_head_init_weight=self.lm_head.weight.data
+        )
+    elif hydra_head_arch == "prefix_mlp":
+        self.hydra_head = HydraPrefixMLP(
             hydra_num_layers=hydra_num_layers,
             hydra_num_heads=hydra_num_heads,
             grounded_heads=grounded_heads,
