@@ -221,7 +221,7 @@ def replace_compute_loss(
                 original_logits = model(
                     **inputs,
                     hydra_return=False,
-                ).logits
+                ).logits.detach()
 
                 for module in model.modules():
                     if isinstance(module, (BaseTunerLayer)):
