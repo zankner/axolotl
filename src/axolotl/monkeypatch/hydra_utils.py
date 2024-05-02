@@ -246,7 +246,7 @@ def replace_compute_loss(
             hydra_labels = hydra_labels.to(hydra_logits.device)
             # if i == 0:
             if hydra_self_distillation:
-                for_hydra_original_logits = original_logits[:, :-(1 + i)].contiguous().view(-1, original_logits.shape[-1])
+                for_hydra_original_logits = original_logits[:, i:-1].contiguous().view(-1, original_logits.shape[-1])
                 mask = hydra_labels.ne(IGNORE_TOKEN_ID)
                 soft_labels = F.softmax(for_hydra_original_logits[mask], dim=-1)
                 loss_i = F.kl_div(

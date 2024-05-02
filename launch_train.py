@@ -64,8 +64,8 @@ if __name__ == "__main__":
         run.parameters["stage_1"]["hydra_num_heads"] = args.num_heads
         run.parameters["stage_2"]["hydra_num_heads"] = args.num_heads
 
-        run.parameters["stage_1"]["hydra_self_distillation"] = args.hydra_self_distillation
-        run.parameters["stage_2"]["hydra_self_distillation"] = args.hydra_self_distillation
+        run.parameters["stage_1"]["hydra_self_distillation"] = args.self_distill
+        run.parameters["stage_2"]["hydra_self_distillation"] = args.self_distill
 
         if args.debug:
             with open("debug.yaml", "w") as f:
