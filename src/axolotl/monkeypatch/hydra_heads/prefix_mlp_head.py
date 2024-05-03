@@ -93,13 +93,13 @@ class HydraPrefixMLP(nn.Module):
             ])
         
         self.hydra_lm_head = nn.ModuleList([
-            nn.Sequential(nn.Linear(self.hidden_size, self.vocab_size)) for _ in range(self.hydra_num_heads)
+            nn.Linear(self.hidden_size, self.vocab_size) for _ in range(self.hydra_num_heads)
         ])
         if lm_head_init_weight is not None:
             print("Initializing HydraLM head with pretrained weights...")
             for i in range(hydra_num_heads):
             # Initialize the weights of each hydra_head using the base model's weights
-                self.hydra_lm_head[i][1].weight.data[:] = lm_head_init_weight[:]
+                self.hydra_lm_head[i].weight.data[:] = lm_head_init_weight[:]
 
     def forward(self, base_hidden_states, input_ids, attention_mask=None, past_key_values=None, position_ids=None, noise=None):
         """

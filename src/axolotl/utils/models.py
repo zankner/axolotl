@@ -548,6 +548,16 @@ def load_model(
             hydra_head_arch=cfg.hydra_head_arch,
         )
 
+        if cfg.flash_attention and cfg.hydra_heads and not inference:
+            if cfg.flash_attn_fuse_mlp:
+                LOG.info("patching with SwiGLU")
+                replace_llama_mlp_with_swiglu(model.hydra_head.prefix_embeding_layer)
+
+            if cfg.flash_attn_fuse_qkv:
+                LOG.info("patching with fused QKV")
+                replace_llama_qkv_with_fused(model.hydra_head.prefix_embeding_layer)
+
+
         replace_compute_loss(
             hydra_heads_coefficient=cfg.hydra_heads_coefficient,
             hydra_decay_coefficient=cfg.hydra_decay_coefficient,
@@ -564,17 +574,17 @@ def load_model(
                 hydra_lr_multiplier=cfg.hydra_lr_multiplier,
             )
 
-        if cfg.adapter in ["lora", "qlora"]:
-            # Add hydra heads to cfg.lora_modules_to_save
-            if cfg.lora_modules_to_save is None:
-                cfg.lora_modules_to_save = []
-            cfg.lora_modules_to_save.append("hydra_head")
-            # for i in range(cfg.hydra_num_heads):
-            #     cfg.lora_modules_to_save.append(f"hydra_head.{i}")
-            # for name, module in model.hydra_head.named_modules():
-            #     if isinstance(module, torch.nn.Linear):
-            #         cfg.lora_modules_to_save.append(f"hydra_head.{name}")
-            # cfg.lora_modules_to_save.append("lm_head")
+        # if cfg.adapter in ["lora", "qlora"]:
+        #     # Add hydra heads to cfg.lora_modules_to_save
+        #     if cfg.lora_modules_to_save is None:
+        #         cfg.lora_modules_to_save = []
+        #     cfg.lora_modules_to_save.append("hydra_head")
+        #     # for i in range(cfg.hydra_num_heads):
+        #     #     cfg.lora_modules_to_save.append(f"hydra_head.{i}")
+        #     # for name, module in model.hydra_head.named_modules():
+        #     #     if isinstance(module, torch.nn.Linear):
+        #     #         cfg.lora_modules_to_save.append(f"hydra_head.{name}")
+        #     # cfg.lora_modules_to_save.append("lm_head")
 
     model, lora_config = load_adapter(model, cfg, cfg.adapter)
 
