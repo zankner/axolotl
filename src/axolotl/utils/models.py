@@ -544,7 +544,8 @@ def load_model(
             model,
             hydra_num_heads=cfg.hydra_num_heads,
             hydra_num_layers=cfg.hydra_num_layers,
-            grounded_heads=cfg.grounded_heads
+            grounded_heads=cfg.grounded_heads,
+            hydra_head_arch=cfg.hydra_head_arch,
         )
 
         replace_compute_loss(
