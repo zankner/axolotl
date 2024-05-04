@@ -142,16 +142,14 @@ parameters:
     hydra_logging: true
     hydra_scheduler: constant
     hydra_lr_multiplier: 1.0
-    hydra_self_distillation: true
+    hydra_self_distillation: # Set in launch script
     hydra_only_heads: true
     ddp_find_unused_parameters: true
     # Stage 1: only train the hydra heads
     # Stage 2: train the whole model
   stage_2:
-    # base_model: lmsys/vicuna-7b-v1.5
-    # base_model_config: lmsys/vicuna-7b-v1.5
-    base_model: ckpts/stage1
-    base_model_config: ckpts/stage1
+    base_model: lmsys/vicuna-7b-v1.5
+    base_model_config: lmsys/vicuna-7b-v1.5
     model_type: LlamaForCausalLM
     tokenizer_type: LlamaTokenizer
     is_llama_derived_model: true

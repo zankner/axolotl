@@ -67,8 +67,6 @@ if __name__ == "__main__":
         run.parameters["stage_1"]["hydra_self_distillation"] = args.self_distill
         run.parameters["stage_2"]["hydra_self_distillation"] = args.self_distill
 
-        # run.parameters["stage_1"]["ddp_find_unused_parameters"] = not args.self_distill
-
         if args.debug:
             with open("debug.yaml", "w") as f:
                 f.write(str(run))
