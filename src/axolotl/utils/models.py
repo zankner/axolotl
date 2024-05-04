@@ -559,11 +559,12 @@ def load_model(
 
         # Avoid LORA hydra head when attention in hydra head
         target_modules_minus_hydra = []
-        for key in cfg.lora_target_modules[:1]:
+        for key in cfg.lora_target_modules:
             for param_name, _ in model.named_parameters():
                 fmt_param_name = param_name.replace(".weight", "")
                 if fmt_param_name.endswith(f".{key}") and "hydra_head" not in fmt_param_name:
                     target_modules_minus_hydra.append(fmt_param_name)
+        target_modules_minus_hydra.append("lm_head")
         cfg.lora_target_modules = target_modules_minus_hydra
 
         replace_compute_loss(
