@@ -540,24 +540,31 @@ def load_model(
             f"using Hydra with {cfg.hydra_num_heads} heads, {cfg.hydra_num_layers} layers, {cfg.hydra_decay_coefficient} decay coefficient, {cfg.hydra_heads_coefficient} heads coefficient, {cfg.hydra_scheduler} scheduler, {cfg.hydra_logging} logging"
         )
 
-        if not hasattr(model, "hydra_head"): # Ignore when continue from ckpt w/ hydra head
-            add_hydra_heads(
-                model,
-                hydra_num_heads=cfg.hydra_num_heads,
-                hydra_num_layers=cfg.hydra_num_layers,
-                grounded_heads=cfg.grounded_heads,
-                hydra_head_arch=cfg.hydra_head_arch,
-            )
+        add_hydra_heads(
+            model,
+            hydra_num_heads=cfg.hydra_num_heads,
+            hydra_num_layers=cfg.hydra_num_layers,
+            grounded_heads=cfg.grounded_heads,
+            hydra_head_arch=cfg.hydra_head_arch,
+        )
 
-            if cfg.flash_attention and cfg.hydra_heads and not inference:
-                if cfg.flash_attn_fuse_mlp:
-                    LOG.info("patching with SwiGLU")
-                    replace_llama_mlp_with_swiglu(model.hydra_head.prefix_embeding_layer)
+        if cfg.flash_attention and cfg.hydra_heads and not inference:
+            if cfg.flash_attn_fuse_mlp:
+                LOG.info("patching with SwiGLU")
+                replace_llama_mlp_with_swiglu(model.hydra_head.prefix_embedding_layer)
 
-                if cfg.flash_attn_fuse_qkv:
-                    LOG.info("patching with fused QKV")
-                    replace_llama_qkv_with_fused(model.hydra_head.prefix_embeding_layer)
+            if cfg.flash_attn_fuse_qkv:
+                LOG.info("patching with fused QKV")
+                replace_llama_qkv_with_fused(model.hydra_head.prefix_embedding_layer)
 
+        # Avoid LORA hydra head when attention in hydra head
+        target_modules_minus_hydra = []
+        for key in cfg.lora_target_modules[:1]:
+            for param_name, _ in model.named_parameters():
+                fmt_param_name = param_name.replace(".weight", "")
+                if fmt_param_name.endswith(f".{key}") and "hydra_head" not in fmt_param_name:
+                    target_modules_minus_hydra.append(fmt_param_name)
+        cfg.lora_target_modules = target_modules_minus_hydra
 
         replace_compute_loss(
             hydra_heads_coefficient=cfg.hydra_heads_coefficient,
@@ -575,11 +582,11 @@ def load_model(
                 hydra_lr_multiplier=cfg.hydra_lr_multiplier,
             )
 
-        # if cfg.adapter in ["lora", "qlora"]:
-        #     # Add hydra heads to cfg.lora_modules_to_save
-        #     if cfg.lora_modules_to_save is None:
-        #         cfg.lora_modules_to_save = []
-        #     cfg.lora_modules_to_save.append("hydra_head")
+        if cfg.adapter in ["lora", "qlora"]:
+            # Add hydra heads to cfg.lora_modules_to_save
+            if cfg.lora_modules_to_save is None:
+                cfg.lora_modules_to_save = []
+            cfg.lora_modules_to_save.append("hydra_head")
         #     # for i in range(cfg.hydra_num_heads):
         #     #     cfg.lora_modules_to_save.append(f"hydra_head.{i}")
         #     # for name, module in model.hydra_head.named_modules():

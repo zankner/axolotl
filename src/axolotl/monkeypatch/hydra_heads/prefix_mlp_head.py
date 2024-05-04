@@ -67,7 +67,7 @@ class HydraPrefixMLP(nn.Module):
         prefix_config.num_hidden_layers = 1
 
         if base_config.model_type == "llama":
-            self.prefix_embeding_layer = LlamaModel(prefix_config)
+            self.prefix_embedding_layer = LlamaModel(prefix_config)
         else:
             raise NotImplementedError(f"Model type {base_config.model_type} not supported for prefix embeddings.")
 
@@ -112,7 +112,7 @@ class HydraPrefixMLP(nn.Module):
             torch.Tensor: Output after the MLP.
         """
 
-        prefix_embedding = self.prefix_embeding_layer(
+        prefix_embedding = self.prefix_embedding_layer(
             inputs_embeds=base_hidden_states,
             attention_mask=attention_mask,
             past_key_values=past_key_values,
@@ -184,7 +184,7 @@ class HydraPrefixMLP(nn.Module):
         # Fixed to only one layer currently
         past_key_values = past_key_values[-1:]
         position_ids = torch.cumsum(attention_mask, dim=1)[:, -base_hidden_states.shape[1]:] - 1
-        prefix_embedding = self.prefix_embeding_layer(
+        prefix_embedding = self.prefix_embedding_layer(
             inputs_embeds=base_hidden_states,
             attention_mask=attention_mask, # Might need to change eventually
             past_key_values=past_key_values,
