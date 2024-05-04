@@ -68,6 +68,7 @@ class HydraPrefixMLP(nn.Module):
 
         if base_config.model_type == "llama":
             self.prefix_embedding_layer = LlamaModel(prefix_config)
+            del self.prefix_embedding_layer.embed_tokens # Ignoring so DDP doesn't have unused params
         else:
             raise NotImplementedError(f"Model type {base_config.model_type} not supported for prefix embeddings.")
 
